@@ -22,9 +22,9 @@ struct PNMColor {
 
 /* 1画素 */
 typedef union PNMPixelTag {
-  PNMColor  c;  /* RGBカラー */
-  uint8_t   g;  /* グレースケール */
-  uint8_t   b;  /* 2値(0 or 1) */
+  struct PNMColor  c;  /* RGBカラー */
+  uint8_t          g;  /* グレースケール */
+  uint8_t          b;  /* 2値(0 or 1) */
 } PNMPixel;
 
 /* PNM画像型 */
@@ -37,11 +37,10 @@ struct PNMImage {
 };
 
 /* 結果型 */
-typedef enum PNMApiResult {
+typedef enum PNMApiResultTag {
   PNM_APIRESULT_OK,
   PNM_APIRESULT_NG,
-};
-
+} PNMApiResult;
 
 /* ファイルオープン */
 struct PNMImage* PNM_ReadFile(const char* filename);
