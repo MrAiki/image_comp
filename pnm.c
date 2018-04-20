@@ -12,7 +12,7 @@
 
 /* 下位n_bitsを取得 */
 /* 補足）((1 << n_bits) - 1)は下位の数値だけ取り出すマスクになる */
-#define PNM_GetLowerBits(n_bits, val) ((val) & ((1 << n_bits) - 1))
+#define PNM_GetLowerBits(n_bits, val) ((val) & ((1 << (n_bits)) - 1))
 
 /* 内部エラー型 */
 typedef enum PNMErrorTag {
@@ -29,6 +29,7 @@ struct PNMStringBuffer {
 };
 
 /* ビットバッファ */
+/* TODO: これもバイトバッファにする */
 struct PNMBitBuffer {
   uint8_t   bit_buffer;                       /* ビットバッファ */
   int8_t    bit_count;                        /* ビット入力カウント */
@@ -77,7 +78,7 @@ static PNMError PNMParser_ReadP5(struct PNMParser* parser, struct PNMImage* imag
 static PNMError PNMParser_ReadP6(struct PNMParser* parser, struct PNMImage* image);
 
 /* 画像の領域割り当て */
-static struct PNMImage* PNM_AllocateImage(uint32_t width, uint32_t height);
+static struct PNMImage* PNM_AllocateImage(int32_t width, int32_t height);
 /* 画像の領域解放 */
 void PNM_FreeImage(struct PNMImage* image);
 
@@ -207,11 +208,15 @@ static void PNM_Write(FILE* fp, const struct PNMImage* img)
 }
 
 /* 画像の領域割り当て */
-static struct PNMImage* PNM_AllocateImage(uint32_t width, uint32_t height)
+static struct PNMImage* PNM_AllocateImage(int32_t width, int32_t height)
 {
   struct PNMImage  *pnm;
-  struct PNMPixel  **img;
-  uint32_t y;
+  PNMPixel  **img;
+  int32_t y;
+
+  if (width <= 0 || height <= 0) {
+    return NULL;
+  }
 
   /* PNMイメージの割り当て */
   pnm = (struct PNMImage *)malloc(sizeof(struct PNMImage));
@@ -222,17 +227,19 @@ static struct PNMImage* PNM_AllocateImage(uint32_t width, uint32_t height)
   pnm->width  = width;
 
   /* 画素領域の割り当て */
-  img = (struct PNMPixel **)malloc(sizeof(PNMPixel*) * height);
+  img = (PNMPixel **)malloc(sizeof(PNMPixel*) * height);
   if (img == NULL) {
     return NULL;
   }
   for (y = 0; y < height; y++) {
-    img[y] = (struct PNMPixel *)malloc(sizeof(PNMPixel) * width);
+    /* 0クリアで割り当てておく */
+    img[y] = (PNMPixel *)calloc(width, sizeof(PNMPixel));
     if (img[y] == NULL) {
       return NULL;
     }
   }
 
+  pnm->img = img;
   return pnm;
 }
 
@@ -417,11 +424,18 @@ static int32_t PNMParser_GetNextCharacter(struct PNMParser* parser)
   /* バッファから1文字読み込み */
   ch = buf->string[buf->read_pos++];
 
+  /* ナル文字: ファイル終端 */
+  if (ch == '\0') {
+    return EOF;
+  }
+
   /* コメント */
   if (ch == '#') {
     /* 改行が表れるまで読み飛ばし */
     do {
       ch = PNMParser_GetNextCharacter(parser);
+      /* コメント途中でファイル終端 */
+      if (ch == EOF) { return EOF; }
     } while (ch != '\n');
   }
 
@@ -437,20 +451,21 @@ static int32_t PNMParser_GetNextCharacter(struct PNMParser* parser)
 static int32_t PNMParser_GetNextString(struct PNMParser* parser,
     char* buffer, uint32_t buffer_size)
 {
-  int32_t next_ch;
+  int32_t ch;
   uint32_t buffer_pos;
 
   if (parser == NULL || buffer == NULL) {
     return -1;
   }
 
+  /* 空白の読み飛ばし */
+  while (isspace(ch = PNMParser_GetNextCharacter(parser))) ;
+
   /* 文字列読み取り */
   buffer_pos = 0;
-  next_ch = PNMParser_GetNextCharacter(parser);
-  while (next_ch != EOF && !isspace(next_ch)
-        && (buffer_pos-1 < buffer_size)) {
-      buffer[buffer_pos++] = next_ch;
-      next_ch = PNMParser_GetNextCharacter(parser);
+  while (ch != EOF && !isspace(ch) && (buffer_pos < (buffer_size-1))) {
+      buffer[buffer_pos++] = ch;
+      ch = PNMParser_GetNextCharacter(parser);
   }
 
   /* 末端をナル文字で埋める */
@@ -474,7 +489,7 @@ static int32_t PNMParser_GetNextInteger(struct PNMParser* parser)
   ret = strtol(token_string, &err, 10);
 
   /* 変換エラー */
-  if (err != '\0') {
+  if (err[0] != '\0') {
     return -1;
   }
 

@@ -1,10 +1,10 @@
 CC 		    = gcc
 CFLAGS 	  = -Wall -Wextra -O0 -g
 LDFLAGS		= -lm
-OBJS	 		= test_main.o test.o
+OBJS	 		= test_main.o test.o test_pnm.o
 TARGET    = test 
 
-all: $(TARGET) $(COMPARE_TARGET)
+all: $(TARGET) 
 
 rebuild:
 	make clean
