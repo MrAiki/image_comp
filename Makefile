@@ -1,6 +1,6 @@
 CC 		    = gcc
 CFLAGS 	  = -Wall -Wextra -O0 -g
-OBJS	 		= main.o 
+OBJS	 		= main.o pnm.o
 OBJS			+= $(COMP_OBJS)
 TARGET    = pnm
 

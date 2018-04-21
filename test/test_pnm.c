@@ -67,7 +67,7 @@ void testPNMParser_ParseStringTest(void *obj)
 
     /* パーサ初期化 */
     fp = fopen(test_filename, "rb");
-    PNMParser_Initialize(&parser, fp);
+    PNMParser_InitializeForText(&parser, fp);
 
     /* 一致確認 */
     test_index = 0;
@@ -94,7 +94,7 @@ void testPNMParser_ParseStringTest(void *obj)
 
     /* パーサ初期化 */
     fp = fopen(test_filename, "rb");
-    PNMParser_Initialize(&parser, fp);
+    PNMParser_InitializeForText(&parser, fp);
 
     /* 一致確認 */
     test_index = 0;
@@ -125,7 +125,7 @@ void testPNMParser_ParseStringTest(void *obj)
 
     /* パーサ初期化 */
     fp = fopen(test_filename, "rb");
-    PNMParser_Initialize(&parser, fp);
+    PNMParser_InitializeForText(&parser, fp);
 
     /* 一致確認 */
     for (i_dig = 0; i_dig < 3; i_dig++) {
@@ -155,9 +155,7 @@ void testPNMParser_ParseBinaryTest(void *obj)
     fclose(fp);
 
     fp = fopen(test_filename, "rb");
-    PNMParser_Initialize(&parser, fp);
-    /* FIXME:バッファ初期化をどうするか。バイナリ向けの初期化？バッファ分ける？ */
-    parser.u_buffer.b.bit_count = 0;
+    PNMParser_InitializeForBinary(&parser, fp);
 
     /* 一致確認 */
     for (i = 0; i < 4; i++) {
@@ -185,9 +183,7 @@ void testPNMParser_ParseBinaryTest(void *obj)
     fclose(fp);
 
     fp = fopen(test_filename, "rb");
-    PNMParser_Initialize(&parser, fp);
-    /* FIXME:バッファ初期化をどうするか。バイナリ向けの初期化？バッファ分ける？ */
-    parser.u_buffer.b.bit_count = 0;
+    PNMParser_InitializeForBinary(&parser, fp);
 
     /* 一致確認 */
     for (i = 0; i < 4; i++) {
@@ -200,7 +196,7 @@ void testPNMParser_ParseBinaryTest(void *obj)
 
   /* 複雑なパターンでテスト */
   {
-#define ANSWER_BINARY_SIZE 64
+#define ANSWER_BINARY_SIZE 32
     struct PNMParser parser;
     FILE* fp;
     const char* test_filename = "./data/for_test_parser.bin";
@@ -218,8 +214,7 @@ void testPNMParser_ParseBinaryTest(void *obj)
 
     /* ビット単位の一致確認 */
     fp = fopen(test_filename, "rb");
-    PNMParser_Initialize(&parser, fp);
-    parser.u_buffer.b.bit_count = 0;
+    PNMParser_InitializeForBinary(&parser, fp);
     for (i = 0; i < ANSWER_BINARY_SIZE; i++) {
       for (shift = 0; shift < 8; shift++) {
         test = PNMParser_GetBit(&parser);
@@ -231,14 +226,406 @@ void testPNMParser_ParseBinaryTest(void *obj)
 
     /* バイト単位の一致確認 */
     fp = fopen(test_filename, "rb");
-    PNMParser_Initialize(&parser, fp);
-    parser.u_buffer.b.bit_count = 0;
+    PNMParser_InitializeForBinary(&parser, fp);
     for (i = 0; i < ANSWER_BINARY_SIZE; i++) {
       test = PNMParser_GetBits(&parser, 8);
       Test_AssertEqual(test, answer[i]);
     }
     fclose(fp);
 #undef BINARY_SIZE
+  }
+}
+
+/* PNMヘッダの読み込みテスト */
+void testPNMParser_ReadHeaderTest(void *obj)
+{
+  TEST_UNUSED_PARAMETER(obj);
+
+  {
+    FILE *fp;
+    struct PNMParser parser;
+    const char* test_filename = "./data/for_test_header.bin";
+    const char* format_strs[] = {"P1", "P2", "P3", "P4", "P5", "P6"};
+    const PNMFormat format_ans[]
+      = {PNM_P1, PNM_P2, PNM_P3, PNM_P4, PNM_P5, PNM_P6};
+    const int32_t test_width = 200;
+    const int32_t test_height = 100;
+    const int32_t test_max_brightness = 180;
+    uint32_t i_test;
+
+    /* 各フォーマットで正しく情報が取れるかテスト */
+    for (i_test = 0; 
+         i_test < sizeof(format_ans) / sizeof(format_ans[0]);
+         i_test++) {
+      PNMFormat format;
+      PNMError  read_err;
+      int32_t width, height, max_brightness;
+
+      /* ヘッダ書き出し */
+      fp = fopen(test_filename, "wb");
+      if (format_ans[i_test] == PNM_P1
+          || format_ans[i_test] == PNM_P4) {
+        fprintf(fp, "%s \n#Aikatsu!Aikatsu!\n%d %d",
+            format_strs[i_test], 
+            test_width, test_height);
+      } else {
+        fprintf(fp, "%s \n#Aikatsu!Aikatsu!\n%d %d\n%d",
+            format_strs[i_test], 
+            test_width, test_height, test_max_brightness);
+      }
+      fclose(fp);
+
+      /* 正しく取得できるか */
+      fp = fopen(test_filename, "rb");
+      PNMParser_InitializeForText(&parser, fp);
+      read_err = PNMParser_ReadHeader(&parser, 
+          &format, &width, &height, &max_brightness);
+      Test_AssertEqual(read_err, PNM_ERROR_OK);
+      Test_AssertEqual(format, format_ans[i_test]);
+      Test_AssertEqual(width,  test_width);
+      Test_AssertEqual(height, test_height);
+
+      if (format_ans[i_test] != PNM_P1
+          && format_ans[i_test] != PNM_P4) {
+        Test_AssertEqual(max_brightness, test_max_brightness);
+      }
+      fclose(fp);
+    }
+  }
+}
+
+/* P1フォーマットの読み込みテスト */
+void testPNMParser_ReadP1Test(void *obj)
+{
+  TEST_UNUSED_PARAMETER(obj);
+
+  /* P1フォーマットの読み取りテスト */
+  {
+#define TESTWIDTH   5
+#define TESTHEIGHT  6
+    struct PNMImage* image;
+    struct PNMParser parser;
+    FILE* fp;
+    const char* test_filename = "./data/for_test_p1.bin";
+    int32_t answer[TESTWIDTH][TESTHEIGHT];
+    uint32_t x, y;
+
+    /* テストファイル作成 */
+    fp = fopen(test_filename, "wb");
+    srand(0);
+    for (y = 0; y < TESTHEIGHT; y++) {
+      for (x = 0; x < TESTWIDTH; x++) {
+        answer[x][y] = (int32_t)(rand() % 2);
+        fprintf(fp, "%d ", answer[x][y]);
+      }
+      fputc('\n', fp);
+    }
+    fclose(fp);
+
+    /* パーサ初期化 */
+    fp = fopen(test_filename, "rb");
+    PNMParser_InitializeForText(&parser, fp);
+    image = PNM_AllocateImage(TESTWIDTH, TESTHEIGHT);
+    Test_AssertCondition(image != NULL);
+
+    /* 読み込み */
+    Test_AssertEqual(
+        PNMParser_ReadP1(&parser, image),
+        PNM_ERROR_OK);
+
+    /* 一致確認 */
+    for (y = 0; y < TESTHEIGHT; y++) {
+      for (x = 0; x < TESTWIDTH; x++) {
+        Test_AssertEqual(PNMImg_BIT(image,x,y), answer[x][y]);
+      }
+    }
+
+    /* 解放 */
+    PNM_FreeImage(image);
+    fclose(fp);
+#undef TESTHEIGHT
+#undef TESTWIDTH
+  }
+}
+
+/* P2フォーマットの読み込みテスト */
+void testPNMParser_ReadP2Test(void *obj)
+{
+  TEST_UNUSED_PARAMETER(obj);
+
+  /* P2フォーマットの読み取りテスト */
+  {
+#define TESTWIDTH   5
+#define TESTHEIGHT  6
+    struct PNMImage* image;
+    struct PNMParser parser;
+    FILE* fp;
+    const char* test_filename = "./data/for_test_p2.bin";
+    int32_t answer[TESTWIDTH][TESTHEIGHT];
+    uint32_t x, y;
+
+    /* テストファイル作成 */
+    fp = fopen(test_filename, "wb");
+    srand(0);
+    for (y = 0; y < TESTHEIGHT; y++) {
+      for (x = 0; x < TESTWIDTH; x++) {
+        answer[x][y] = (int32_t)(rand() % 0x100);
+        fprintf(fp, "%d ", answer[x][y]);
+      }
+      fputc('\n', fp);
+    }
+    fclose(fp);
+
+    /* パーサ初期化 */
+    fp = fopen(test_filename, "rb");
+    PNMParser_InitializeForText(&parser, fp);
+    image = PNM_AllocateImage(TESTWIDTH, TESTHEIGHT);
+    Test_AssertCondition(image != NULL);
+
+    /* 読み込み */
+    Test_AssertEqual(
+        PNMParser_ReadP2(&parser, image),
+        PNM_ERROR_OK);
+
+    /* 一致確認 */
+    for (y = 0; y < TESTHEIGHT; y++) {
+      for (x = 0; x < TESTWIDTH; x++) {
+        Test_AssertEqual(PNMImg_GRAY(image,x,y), answer[x][y]);
+      }
+    }
+
+    /* 解放 */
+    PNM_FreeImage(image);
+    fclose(fp);
+#undef TESTHEIGHT
+#undef TESTWIDTH
+  }
+}
+
+/* P3フォーマットの読み込みテスト */
+void testPNMParser_ReadP3Test(void *obj)
+{
+  TEST_UNUSED_PARAMETER(obj);
+
+  /* P3フォーマットの読み込みテスト */
+  {
+#define TESTWIDTH   6
+#define TESTHEIGHT  5
+    struct PNMImage* image;
+    struct PNMParser parser;
+    FILE* fp;
+    const char* test_filename = "./data/for_test_p3.bin";
+    int32_t answer[TESTWIDTH][TESTHEIGHT][3];
+    uint32_t x, y, c;
+
+    /* テストファイル作成 */
+    fp = fopen(test_filename, "wb");
+    srand(0);
+    for (y = 0; y < TESTHEIGHT; y++) {
+      for (x = 0; x < TESTWIDTH; x++) {
+        for (c = 0; c < 3; c++) {
+          answer[x][y][c] = (int32_t)(rand() % 0x100);
+          fprintf(fp, "%d ", answer[x][y][c]);
+        }
+      }
+    }
+    fclose(fp);
+
+    /* パーサ初期化 */
+    fp = fopen(test_filename, "rb");
+    PNMParser_InitializeForText(&parser, fp);
+    image = PNM_AllocateImage(TESTWIDTH, TESTHEIGHT);
+    Test_AssertCondition(image != NULL);
+
+    /* 読み込み */
+    Test_AssertEqual(
+        PNMParser_ReadP3(&parser, image),
+        PNM_ERROR_OK);
+
+    /* 一致確認 */
+    for (y = 0; y < TESTHEIGHT; y++) {
+      for (x = 0; x < TESTWIDTH; x++) {
+        Test_AssertEqual(PNMImg_R(image,x,y), answer[x][y][0]);
+        Test_AssertEqual(PNMImg_G(image,x,y), answer[x][y][1]);
+        Test_AssertEqual(PNMImg_B(image,x,y), answer[x][y][2]);
+      }
+    }
+
+    /* 解放 */
+    PNM_FreeImage(image);
+    fclose(fp);
+#undef TESTHEIGHT
+#undef TESTWIDTH
+  }
+}
+
+/* P4フォーマットの読み込みテスト */
+void testPNMParser_ReadP4Test(void *obj)
+{
+  TEST_UNUSED_PARAMETER(obj);
+
+  /* P4フォーマットの読み込みテスト */
+  {
+#define TESTWIDTH   16
+#define TESTWIDTH_STRIDE PNM_CalcStride(TESTWIDTH, 1)
+#define TESTHEIGHT  2
+    struct PNMImage* image;
+    struct PNMParser parser;
+    FILE* fp;
+    const char* test_filename = "./data/for_test_p4.bin";
+    int32_t answer[TESTWIDTH_STRIDE][TESTHEIGHT];
+    uint32_t x, y, shift, ans;
+
+    /* テストファイル作成 */
+    fp = fopen(test_filename, "wb");
+    srand(0);
+    for (y = 0; y < TESTHEIGHT; y++) {
+      for (x = 0; x < TESTWIDTH_STRIDE; x++) {
+        answer[x][y] = (int32_t)(rand() % 0x100);
+        fputc(answer[x][y], fp);
+      }
+    }
+    fclose(fp);
+
+    /* パーサ初期化 */
+    fp = fopen(test_filename, "rb");
+    PNMParser_InitializeForBinary(&parser, fp);
+    image = PNM_AllocateImage(TESTWIDTH, TESTHEIGHT);
+    Test_AssertCondition(image != NULL);
+
+    /* 読み込み */
+    Test_AssertEqual(
+        PNMParser_ReadP4(&parser, image),
+        PNM_ERROR_OK);
+
+    /* 一致確認 */
+    for (y = 0; y < TESTHEIGHT; y++) {
+      for (x = 0; x < TESTWIDTH_STRIDE; x++) {
+        for (shift = 0; shift < 8; shift++) {
+          ans = (answer[x][y] >> (7-shift)) & 1;
+          Test_AssertEqual(PNMImg_BIT(image,8*x+shift,y), ans);
+        }
+      }
+    }
+
+    /* 解放 */
+    PNM_FreeImage(image);
+    fclose(fp);
+#undef TESTHEIGHT
+#undef TESTWIDTH_STRIDE
+#undef TESTWIDTH
+  }
+}
+
+/* P5フォーマットの読み込みテスト */
+void testPNMParser_ReadP5Test(void *obj)
+{
+  TEST_UNUSED_PARAMETER(obj);
+
+  /* P5フォーマットの読み込みテスト */
+  {
+#define TESTWIDTH   16
+#define TESTWIDTH_STRIDE PNM_CalcStride(TESTWIDTH, 8)
+#define TESTHEIGHT  2
+    struct PNMImage* image;
+    struct PNMParser parser;
+    FILE* fp;
+    const char* test_filename = "./data/for_test_p5.bin";
+    int32_t answer[TESTWIDTH_STRIDE][TESTHEIGHT];
+    uint32_t x, y;
+
+    /* テストファイル作成 */
+    fp = fopen(test_filename, "wb");
+    srand(0);
+    for (y = 0; y < TESTHEIGHT; y++) {
+      for (x = 0; x < TESTWIDTH_STRIDE; x++) {
+        answer[x][y] = (int32_t)(rand() % 0x100);
+        fputc(answer[x][y], fp);
+      }
+    }
+    fclose(fp);
+
+    /* パーサ初期化 */
+    fp = fopen(test_filename, "rb");
+    PNMParser_InitializeForBinary(&parser, fp);
+    image = PNM_AllocateImage(TESTWIDTH, TESTHEIGHT);
+    Test_AssertCondition(image != NULL);
+
+    /* 読み込み */
+    Test_AssertEqual(
+        PNMParser_ReadP5(&parser, image),
+        PNM_ERROR_OK);
+
+    /* 一致確認 */
+    for (y = 0; y < TESTHEIGHT; y++) {
+      for (x = 0; x < TESTWIDTH; x++) {
+        Test_AssertEqual(PNMImg_GRAY(image,x,y), answer[x][y]);
+      }
+    }
+
+    /* 解放 */
+    PNM_FreeImage(image);
+    fclose(fp);
+#undef TESTHEIGHT
+#undef TESTWIDTH_STRIDE
+#undef TESTWIDTH
+  }
+}
+
+/* P6フォーマットの読み込みテスト */
+void testPNMParser_ReadP6Test(void *obj)
+{
+  TEST_UNUSED_PARAMETER(obj);
+
+  /* P6フォーマットの読み込みテスト */
+  {
+#define TESTWIDTH   16
+#define TESTHEIGHT  2
+    struct PNMImage* image;
+    struct PNMParser parser;
+    FILE* fp;
+    const char* test_filename = "./data/for_test_p6.bin";
+    int32_t answer[TESTWIDTH][TESTHEIGHT][3];
+    uint32_t x, y, c;
+
+    /* テストファイル作成 */
+    fp = fopen(test_filename, "wb");
+    srand(0);
+    for (y = 0; y < TESTHEIGHT; y++) {
+      for (x = 0; x < TESTWIDTH; x++) {
+        for (c = 0; c < 3; c++) {
+          answer[x][y][c] = (int32_t)(rand() % 0x100);
+          fputc(answer[x][y][c], fp);
+        }
+      }
+    }
+    fclose(fp);
+
+    /* パーサ初期化 */
+    fp = fopen(test_filename, "rb");
+    PNMParser_InitializeForBinary(&parser, fp);
+    image = PNM_AllocateImage(TESTWIDTH, TESTHEIGHT);
+    Test_AssertCondition(image != NULL);
+
+    /* 読み込み */
+    Test_AssertEqual(
+        PNMParser_ReadP6(&parser, image),
+        PNM_ERROR_OK);
+
+    /* 一致確認 */
+    for (y = 0; y < TESTHEIGHT; y++) {
+      for (x = 0; x < TESTWIDTH; x++) {
+        Test_AssertEqual(PNMImg_R(image,x,y), answer[x][y][0]);
+        Test_AssertEqual(PNMImg_G(image,x,y), answer[x][y][1]);
+        Test_AssertEqual(PNMImg_B(image,x,y), answer[x][y][2]);
+      }
+    }
+
+    /* 解放 */
+    PNM_FreeImage(image);
+    fclose(fp);
+#undef TESTHEIGHT
+#undef TESTWIDTH
   }
 }
 
@@ -251,4 +638,11 @@ void testPNM_Setup(void)
   Test_AddTest(suite, testPNM_AllocateFreeImageTest);
   Test_AddTest(suite, testPNMParser_ParseStringTest);
   Test_AddTest(suite, testPNMParser_ParseBinaryTest);
+  Test_AddTest(suite, testPNMParser_ReadHeaderTest);
+  Test_AddTest(suite, testPNMParser_ReadP1Test);
+  Test_AddTest(suite, testPNMParser_ReadP2Test);
+  Test_AddTest(suite, testPNMParser_ReadP3Test);
+  Test_AddTest(suite, testPNMParser_ReadP4Test);
+  Test_AddTest(suite, testPNMParser_ReadP5Test);
+  Test_AddTest(suite, testPNMParser_ReadP6Test);
 }

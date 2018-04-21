@@ -14,6 +14,12 @@
 /* 補足）((1 << n_bits) - 1)は下位の数値だけ取り出すマスクになる */
 #define PNM_GetLowerBits(n_bits, val) ((val) & ((1 << (n_bits)) - 1))
 
+/* algnの倍数で切り上げる */
+#define PNM_RoundUp(val, algn) ((val + ((algn)-1)) & ~((algn)-1))
+
+/* ストライド（幅当たりバイト数）を求める */
+#define PNM_CalcStride(width, psize) (PNM_RoundUp(((psize) * (width)),8) / 8)
+
 /* 内部エラー型 */
 typedef enum PNMErrorTag {
   PNM_ERROR_OK = 0,             /* OK */
@@ -49,8 +55,14 @@ struct PNMParser {
 static struct PNMImage* PNM_Read(FILE* fp);
 /* ファイル書き込み */
 static void PNM_Write(FILE* fp, const struct PNMImage* img);
+/* ファイルヘッダ読み込み */
+static PNMError PNMParser_ReadHeader(struct PNMParser* parser, 
+    PNMFormat *format, int32_t *width, int32_t *height, 
+    int32_t *max_brightness);
 /* パーサの初期化 */
-static void PNMParser_Initialize(struct PNMParser* parser, FILE* fp);
+static void PNMParser_InitializeForText(struct PNMParser* parser, FILE* fp);
+/* パーサの初期化 */
+static void PNMParser_InitializeForBinary(struct PNMParser* parser, FILE* fp);
 /* 次の文字の読み込み */
 static int32_t PNMParser_GetNextCharacter(struct PNMParser* parser);
 /* 次のトークン文字列の取得 返り値は読み込んだ文字数 */
@@ -111,54 +123,22 @@ void PNM_WriteFile(const char* filename, const struct PNMImage* img)
 /* ファイル読み込み */
 static struct PNMImage* PNM_Read(FILE* fp)
 {
-  struct PNMParser parser;
-  struct PNMImage  *pnm;
-  char          header_token[PNMPARSER_MAX_NUMBER_OF_DIGHTS];
-  int32_t       width, height, max;
-  uint8_t       format_int;
-  PNMError      read_err;
-  PNMFormat     format;
+  struct PNMParser  parser;
+  struct PNMImage   *pnm;
+  PNMError          read_err;
+  int32_t           width, height, max_brightness;
+  PNMFormat         format;
 
   /* パーサ初期化 */
-  PNMParser_Initialize(&parser, fp);
+  PNMParser_InitializeForText(&parser, fp);
 
-  /* シグネチャ読み込み */
-  PNMParser_GetNextString(&parser,
-      header_token, sizeof(header_token));
+  /* ヘッダ読み込み */
+  read_err = PNMParser_ReadHeader(&parser, 
+      &format, &width, &height, &max_brightness);
 
-  /* シグネチャ検査 "P1", "P2", "P3", "P4", "P5", "P6" */
-  format_int = header_token[0] - '0';
-  if (header_token[0] != 'P'
-      || format_int < 1 || format_int > 6
-      || header_token[2] != '\0') {
-    fprintf(stderr, "Invalid PNM format signature. \n");
-    return NULL;
-  }
-
-  /* 列挙型に変換 */
-  switch (format_int) {
-    case 1: format = PNM_P1; break;
-    case 2: format = PNM_P2; break;
-    case 3: format = PNM_P3; break;
-    case 4: format = PNM_P4; break;
-    case 5: format = PNM_P5; break;
-    case 6: format = PNM_P6; break;
-  }
-
-  /* 輝度の最大値を取得 */
-  if (format != PNM_P1 && format != PNM_P4) {
-    max = PNMParser_GetNextInteger(&parser);
-    if (max < 0) {
-      fprintf(stderr, "Invalid max brightness(%d). \n", max);
-      return NULL;
-    }
-  }
-
-  /* 幅と高さの取得 */
-  width   = PNMParser_GetNextInteger(&parser);
-  height  = PNMParser_GetNextInteger(&parser);
-  if (width <= 0 || height <= 0) {
-    fprintf(stderr, "Read error in width(%d) or height(%d). \n", width, height);
+  /* ヘッダ読み込みエラー */
+  if (read_err != PNM_ERROR_OK) {
+    fprintf(stderr, "Failed to read header. \n");
     return NULL;
   }
 
@@ -169,7 +149,7 @@ static struct PNMImage* PNM_Read(FILE* fp)
     return NULL;
   }
   pnm->format         = format;
-  pnm->max_brightness = max;
+  pnm->max_brightness = max_brightness;
 
   /* タイプに合わせて画素値を取得 */
   switch (format) {
@@ -205,6 +185,70 @@ static struct PNMImage* PNM_Read(FILE* fp)
 static void PNM_Write(FILE* fp, const struct PNMImage* img)
 {
   return;
+}
+
+/* ファイルヘッダ読み込み */
+static PNMError PNMParser_ReadHeader(struct PNMParser* parser, 
+    PNMFormat *format, int32_t *width, int32_t *height, 
+    int32_t *max_brightness)
+{
+  char          header_token[PNMPARSER_MAX_NUMBER_OF_DIGHTS];
+  uint8_t       format_int;
+  PNMFormat     format_tmp;
+  int32_t       width_tmp, height_tmp, max_tmp;
+
+  /* シグネチャ読み込み */
+  PNMParser_GetNextString(parser,
+      header_token, sizeof(header_token));
+
+  /* シグネチャ検査 "P1", "P2", "P3", "P4", "P5", "P6" */
+  format_int = header_token[1] - '0';
+  if (header_token[0] != 'P'
+      || format_int < 1 || format_int > 6
+      || header_token[2] != '\0') {
+    fprintf(stderr, "Invalid PNM format signature. \n");
+    return PNM_ERROR_NG;
+  }
+
+  /* 列挙型に変換 */
+  switch (format_int) {
+    case 1: format_tmp = PNM_P1; break;
+    case 2: format_tmp = PNM_P2; break;
+    case 3: format_tmp = PNM_P3; break;
+    case 4: format_tmp = PNM_P4; break;
+    case 5: format_tmp = PNM_P5; break;
+    case 6: format_tmp = PNM_P6; break;
+    default:
+            fprintf(stderr, "Invalid PNM format. \n");
+            return PNM_ERROR_NG;
+  }
+
+  /* 幅と高さの取得 */
+  width_tmp   = PNMParser_GetNextInteger(parser);
+  height_tmp  = PNMParser_GetNextInteger(parser);
+  if (width_tmp <= 0 || height_tmp <= 0) {
+    fprintf(stderr, "Read error in width(%d) or height(%d). \n", width_tmp, height_tmp);
+    return PNM_ERROR_NG;
+  }
+
+  /* 輝度の最大値を取得 */
+  if (format_tmp != PNM_P1 && format_tmp != PNM_P4) {
+    max_tmp = PNMParser_GetNextInteger(parser);
+    if (max_tmp < 0) {
+      fprintf(stderr, "Invalid max brightness(%d). \n", max_tmp);
+      return PNM_ERROR_NG;
+    }
+  } else {
+    max_tmp = 1;
+  }
+
+  /* 出力に反映 */
+  *format         = format_tmp;
+  *width          = width_tmp;
+  *height         = height_tmp;
+  *max_brightness = max_tmp;
+
+  return PNM_ERROR_OK;
 }
 
 /* 画像の領域割り当て */
@@ -263,7 +307,7 @@ void PNM_FreeImage(struct PNMImage* image)
 /* P1フォーマットファイルの読み込み */
 static PNMError PNMParser_ReadP1(struct PNMParser* parser, struct PNMImage* image)
 {
-  int32_t   tmp;
+  int32_t   ch;
   uint32_t  x, y;
 
   if (parser == NULL || image == NULL) {
@@ -272,11 +316,12 @@ static PNMError PNMParser_ReadP1(struct PNMParser* parser, struct PNMImage* imag
 
   for (y = 0; y < image->height; y++) {
     for (x = 0; x < image->width; x++) {
-      tmp = PNMParser_GetNextCharacter(parser);
-      if (tmp == '0') {
-        image->img[x][y].b = 0;
-      } else if (tmp == '1') {
-        image->img[x][y].b = 1;
+      /* 空白の読み飛ばし */
+      while (isspace(ch = PNMParser_GetNextCharacter(parser))) ;
+      if (ch == '0') {
+        image->img[y][x].b = 0;
+      } else if (ch == '1') {
+        image->img[y][x].b = 1;
       } else {
         return PNM_ERROR_NG;
       }
@@ -300,7 +345,7 @@ static PNMError PNMParser_ReadP2(struct PNMParser* parser, struct PNMImage* imag
     for (x = 0; x < image->width; x++) {
       tmp = PNMParser_GetNextInteger(parser);
       if (tmp < 0) { return PNM_ERROR_NG; }
-      image->img[x][y].g = tmp;
+      image->img[y][x].g = tmp;
     }
   }
 
@@ -321,15 +366,15 @@ static PNMError PNMParser_ReadP3(struct PNMParser* parser, struct PNMImage* imag
     for (x = 0; x < image->width; x++) {
       tmp = PNMParser_GetNextInteger(parser);
       if (tmp < 0) { return PNM_ERROR_NG; }
-      image->img[x][y].c.r = tmp;
+      image->img[y][x].c.r = tmp;
 
       tmp = PNMParser_GetNextInteger(parser);
       if (tmp < 0) { return PNM_ERROR_NG; }
-      image->img[x][y].c.g = tmp;
+      image->img[y][x].c.g = tmp;
 
       tmp = PNMParser_GetNextInteger(parser);
       if (tmp < 0) { return PNM_ERROR_NG; }
-      image->img[x][y].c.b = tmp;
+      image->img[y][x].c.b = tmp;
     }
   }
 
@@ -350,7 +395,7 @@ static PNMError PNMParser_ReadP4(struct PNMParser* parser, struct PNMImage* imag
     for (x = 0; x < image->width; x++) {
       tmp = PNMParser_GetBit(parser);
       if (tmp < 0) { return PNM_ERROR_IO; }
-      image->img[x][y].b = tmp;
+      image->img[y][x].b = tmp;
     }
   }
 
@@ -367,7 +412,7 @@ static PNMError PNMParser_ReadP5(struct PNMParser* parser, struct PNMImage* imag
     for (x = 0; x < image->width; x++) {
       tmp = PNMParser_GetBits(parser, 8);
       if (tmp < 0) { return PNM_ERROR_IO; }
-      image->img[x][y].g = tmp;
+      image->img[y][x].g = tmp;
     }
   }
 
@@ -384,13 +429,13 @@ static PNMError PNMParser_ReadP6(struct PNMParser* parser, struct PNMImage* imag
     for (x = 0; x < image->width; x++) {
       tmp = PNMParser_GetBits(parser, 8);
       if (tmp < 0) { return PNM_ERROR_IO; }
-      image->img[x][y].c.r = tmp;
+      image->img[y][x].c.r = tmp;
       tmp = PNMParser_GetBits(parser, 8);
       if (tmp < 0) { return PNM_ERROR_IO; }
-      image->img[x][y].c.g = tmp;
+      image->img[y][x].c.g = tmp;
       tmp = PNMParser_GetBits(parser, 8);
       if (tmp < 0) { return PNM_ERROR_IO; }
-      image->img[x][y].c.b = tmp;
+      image->img[y][x].c.b = tmp;
     }
   }
 
@@ -398,10 +443,17 @@ static PNMError PNMParser_ReadP6(struct PNMParser* parser, struct PNMImage* imag
 }
 
 /* パーサの初期化 */
-static void PNMParser_Initialize(struct PNMParser* parser, FILE* fp)
+static void PNMParser_InitializeForText(struct PNMParser* parser, FILE* fp)
 {
   parser->fp                  = fp;
   parser->u_buffer.s.read_pos = -1;
+}
+
+/* パーサの初期化 */
+static void PNMParser_InitializeForBinary(struct PNMParser* parser, FILE* fp)
+{
+  parser->fp                    = fp;
+  parser->u_buffer.b.bit_count  = 0;
 }
 
 /* 次の文字の読み込み */
@@ -409,6 +461,11 @@ static int32_t PNMParser_GetNextCharacter(struct PNMParser* parser)
 {
   int32_t ch;
   struct PNMStringBuffer *buf = &(parser->u_buffer.s);
+
+  /* バッファを使い切ったら読み込みを要求 */
+  if (buf->read_pos == PNMPARSER_BUFFER_LENGTH) {
+    buf->read_pos = -1;
+  }
 
   /* 新しい行の読み込み */
   if (buf->read_pos == -1) {

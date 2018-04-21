@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+/* TODO: ビットマップのアクセサが欲しい */
+
 /* PNM画像フォーマット */
 typedef enum PNMFormatTag {
   PNM_P1,       /* 2値 テキスト(.pbm) */
@@ -38,9 +40,16 @@ struct PNMImage {
 
 /* 結果型 */
 typedef enum PNMApiResultTag {
-  PNM_APIRESULT_OK,
+  PNM_APIRESULT_OK = 0,
   PNM_APIRESULT_NG,
 } PNMApiResult;
+
+/* 画素アクセサ */
+#define PNMImg_BIT(pnm, x, y)  (pnm->img[(y)][(x)].b)
+#define PNMImg_GRAY(pnm, x, y) (pnm->img[(y)][(x)].g)
+#define PNMImg_R(pnm, x, y)    (pnm->img[(y)][(x)].c.r)
+#define PNMImg_G(pnm, x, y)    (pnm->img[(y)][(x)].c.g)
+#define PNMImg_B(pnm, x, y)    (pnm->img[(y)][(x)].c.b)
 
 /* ファイルオープン */
 struct PNMImage* PNM_ReadFile(const char* filename);
