@@ -37,8 +37,9 @@ struct PNMStringBuffer {
 /* ビットバッファ */
 /* TODO: これもバイトバッファにする */
 struct PNMBitBuffer {
-  uint8_t   bit_buffer;                       /* ビットバッファ */
+  uint8_t   bytes[PNMPARSER_BUFFER_LENGTH];   /* ビットバッファ */
   int8_t    bit_count;                        /* ビット入力カウント */
+  int32_t   byte_pos;                         /* バイト列読み込み位置 */
 };
 
 /* パーサ */
@@ -401,10 +402,10 @@ static PNMError PNMParser_ReadP4(struct PNMParser* parser, struct PNMImage* imag
       if (tmp < 0) { return PNM_ERROR_IO; }
       image->img[y][x].b = tmp;
     }
-    /* ストライドはバイト単位になるため、
+    /* HACK:ストライドはバイト単位になるため、
      * 末端ビットは0が埋まっている. 
      * -> リセットを掛けて読み飛ばす */
-    PNMParser_InitializeForBinary(parser, parser->fp);
+    parser->u_buffer.b.bit_count = 0;
   }
 
   return PNM_ERROR_OK;
@@ -471,8 +472,7 @@ static void PNMParser_InitializeForBinary(struct PNMParser* parser, FILE* fp)
 {
   parser->fp                    = fp;
   memset(&parser->u_buffer, 0, sizeof(struct PNMBitBuffer));
-  parser->u_buffer.b.bit_count  = 0;
-  parser->u_buffer.b.bit_buffer = 0;
+  parser->u_buffer.b.byte_pos   = -1;
 }
 
 /* 次の文字の読み込み */
@@ -572,7 +572,6 @@ static int32_t PNMParser_GetNextInteger(struct PNMParser* parser)
 /* エラー時は負値を返す */
 static int32_t PNMParser_GetBits(struct PNMParser* parser, uint8_t n_bits)
 {
-  int32_t   ch;
   uint16_t  tmp = 0;
   struct PNMBitBuffer *buf = &(parser->u_buffer.b);
 
@@ -580,24 +579,42 @@ static int32_t PNMParser_GetBits(struct PNMParser* parser, uint8_t n_bits)
     return -1;
   }
 
+  /* 初回読み込み */
+  if (buf->byte_pos == -1) {
+      if (fread(buf->bytes, sizeof(uint8_t),
+            PNMPARSER_BUFFER_LENGTH, parser->fp) == 0) {
+        return -1;
+      }
+      buf->byte_pos   = 0;
+      buf->bit_count  = 8;
+  }
+
   /* 最上位ビットからデータを埋めていく
    * 初回ループではtmpの上位ビットにセット
    * 2回目以降は8bit単位で入力しtmpにセット */
   while (n_bits > buf->bit_count) {
+    /* 上位bitから埋めていく */
     n_bits  -= buf->bit_count;
-    tmp     |= PNM_GetLowerBits(buf->bit_count, buf->bit_buffer) << n_bits;
-    /* 1バイト読み込み */
-    if ((ch = getc(parser->fp)) == EOF) {
-      return -1;
-    }
-    buf->bit_buffer  = ch;
+    tmp     |= PNM_GetLowerBits(buf->bit_count, buf->bytes[buf->byte_pos]) << n_bits;
+
+    /* 1バイト読み進める */
+    buf->byte_pos++;
     buf->bit_count   = 8;
+
+    /* バッファが一杯ならば、再度読み込み */
+    if (buf->byte_pos == PNMPARSER_BUFFER_LENGTH) {
+      if (fread(buf->bytes, sizeof(uint8_t),
+            PNMPARSER_BUFFER_LENGTH, parser->fp) == 0) {
+        return -1;
+      }
+      buf->byte_pos = 0;
+    }
   }
 
   /* 端数ビットの処理 
    * 残ったビット分をtmpの最上位ビットにセット */
   buf->bit_count -= n_bits;
-  tmp            |= PNM_GetLowerBits(n_bits, buf->bit_buffer >> buf->bit_count);
+  tmp            |= PNM_GetLowerBits(n_bits, buf->bytes[buf->byte_pos] >> buf->bit_count);
 
   return tmp;
 }
