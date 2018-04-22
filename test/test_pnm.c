@@ -728,8 +728,291 @@ CHECK_END:
 
   }
 
-  /* 読み出したデータを何もせずに壊れていないか確認 */
+}
+
+/* ビット書き込みテスト */
+void testPNMBitWriter_WriteBitTest(void *obj)
+{
+  TEST_UNUSED_PARAMETER(obj);
+
+  /* ビット単位の書き込み */
   {
+    struct PNMBitWriter writer;
+    const char* test_filename = "./data/for_test_bitwriter.bin";
+    FILE *fp = fopen(test_filename, "wb");
+
+    PNMBitWriter_Initialize(&writer, fp);
+    /* 0xAC を書き込む */
+    Test_AssertEqual(PNMBitWriter_PutBits(&writer, 1, 1), PNM_ERROR_OK);
+    Test_AssertEqual(PNMBitWriter_PutBits(&writer, 0, 1), PNM_ERROR_OK);
+    Test_AssertEqual(PNMBitWriter_PutBits(&writer, 1, 1), PNM_ERROR_OK);
+    Test_AssertEqual(PNMBitWriter_PutBits(&writer, 0, 1), PNM_ERROR_OK);
+    Test_AssertEqual(PNMBitWriter_PutBits(&writer, 1, 1), PNM_ERROR_OK);
+    Test_AssertEqual(PNMBitWriter_PutBits(&writer, 1, 1), PNM_ERROR_OK);
+    Test_AssertEqual(PNMBitWriter_PutBits(&writer, 0, 1), PNM_ERROR_OK);
+    Test_AssertEqual(PNMBitWriter_PutBits(&writer, 0, 1), PNM_ERROR_OK);
+    fclose(fp);
+
+    /* 内容チェック */
+    fp = fopen(test_filename, "rb");
+    Test_AssertCondition(fp != NULL);
+    Test_AssertEqual(fgetc(fp), 0xAC);
+    fclose(fp);
+  }
+
+  /* バイト単位の書き込み */
+  {
+    struct PNMBitWriter writer;
+    const char* test_filename = "./data/for_test_bitwriter.bin";
+    FILE *fp = fopen(test_filename, "wb");
+
+    PNMBitWriter_Initialize(&writer, fp);
+    /* 0xDEADBEAF を書き込む */
+    Test_AssertEqual(PNMBitWriter_PutBits(&writer, 0xDE, 8), PNM_ERROR_OK);
+    Test_AssertEqual(PNMBitWriter_PutBits(&writer, 0xAD, 8), PNM_ERROR_OK);
+    Test_AssertEqual(PNMBitWriter_PutBits(&writer, 0xBE, 8), PNM_ERROR_OK);
+    Test_AssertEqual(PNMBitWriter_PutBits(&writer, 0xAF, 8), PNM_ERROR_OK);
+    fclose(fp);
+
+    /* 内容チェック */
+    fp = fopen(test_filename, "rb");
+    Test_AssertCondition(fp != NULL);
+    Test_AssertEqual(fgetc(fp), 0xDE);
+    Test_AssertEqual(fgetc(fp), 0xAD);
+    Test_AssertEqual(fgetc(fp), 0xBE);
+    Test_AssertEqual(fgetc(fp), 0xAF);
+    fclose(fp);
+  }
+}
+
+/* 画像書き込みテスト */
+void testPNMBitWriter_WritePNMImageTest(void *obj)
+{
+  TEST_UNUSED_PARAMETER(obj);
+
+  /* P1フォーマットの書き込みテスト */
+  {
+#define TESTWIDTH   16
+#define TESTHEIGHT  17
+    struct PNMImage*  image;
+    const char*       test_filename[] = {
+      "./data/for_test_write_p1.pbm",
+      "./data/for_test_write_p4.pbm",
+    };
+    const PNMFormat   formats[] = { PNM_P1, PNM_P4 };
+    uint32_t          answer[TESTWIDTH][TESTHEIGHT];
+    uint32_t          x, y, i_test;
+    int32_t           is_ok;
+
+    for (i_test = 0; i_test < sizeof(test_filename) / sizeof(test_filename[0]); i_test++) {
+      /* 画像を作ってみる */
+      image = PNM_AllocateImage(TESTWIDTH, TESTHEIGHT);
+      image->format = formats[i_test];
+      srand(0);
+      for (y = 0; y < TESTHEIGHT; y++) {
+        for (x = 0; x < TESTWIDTH; x++) {
+          answer[x][y] = rand() % 2;
+          PNMImg_BIT(image, x, y) = answer[x][y];
+        }
+      }
+
+      /* 書き込み */
+      Test_AssertEqual(PNM_WriteFile(test_filename[i_test], image), PNM_APIRESULT_OK);
+      PNM_FreeImage(image);
+
+      /* ちゃんと作れているか確認 */
+      image = PNM_ReadFile(test_filename[i_test]);
+      Test_AssertCondition(image != NULL);
+      Test_AssertEqual(image->format, formats[i_test]);
+
+      /* 内容確認 */
+      is_ok = 1;
+      for (y = 0; y < TESTHEIGHT; y++) {
+        for (x = 0; x < TESTWIDTH; x++) {
+          if (PNMImg_BIT(image, x, y) != answer[x][y]) {
+            is_ok = 0;
+            goto CHECK_END_P1P4;
+          }
+        }
+      }
+CHECK_END_P1P4:
+      Test_AssertEqual(is_ok, 1);
+      PNM_FreeImage(image);
+    }
+
+#undef TESTWIDTH
+#undef TESTHEIGHT
+  }
+
+  /* P2フォーマットの書き込みテスト */
+  {
+#define TESTWIDTH   32
+#define TESTHEIGHT  50
+    struct PNMImage*  image;
+    const char*       test_filename[] = {
+      "./data/for_test_write_p2.pgm",
+      "./data/for_test_write_p5.pgm",
+    };
+    const PNMFormat   formats[] = { PNM_P2, PNM_P5 };
+    uint32_t          answer[TESTWIDTH][TESTHEIGHT];
+    uint32_t          x, y, i_test;
+    int32_t           is_ok;
+
+    for (i_test = 0; i_test < sizeof(test_filename) / sizeof(test_filename[0]); i_test++) {
+      /* 画像を作ってみる */
+      image = PNM_AllocateImage(TESTWIDTH, TESTHEIGHT);
+      image->format = formats[i_test];
+      image->max_brightness = 0xFF;
+      srand(0);
+      for (y = 0; y < TESTHEIGHT; y++) {
+        for (x = 0; x < TESTWIDTH; x++) {
+          answer[x][y] = rand() % 0x100;
+          PNMImg_GRAY(image, x, y) = answer[x][y];
+        }
+      }
+
+      /* 書き込み */
+      Test_AssertEqual(PNM_WriteFile(test_filename[i_test], image), PNM_APIRESULT_OK);
+      PNM_FreeImage(image);
+
+      /* ちゃんと作れているか確認 */
+      image = PNM_ReadFile(test_filename[i_test]);
+      Test_AssertCondition(image != NULL);
+      Test_AssertEqual(image->format, formats[i_test]);
+
+      /* 内容確認 */
+      is_ok = 1;
+      for (y = 0; y < TESTHEIGHT; y++) {
+        for (x = 0; x < TESTWIDTH; x++) {
+          if (PNMImg_GRAY(image, x, y) != answer[x][y]) {
+            is_ok = 0;
+            goto CHECK_END_P2P5;
+          }
+        }
+      }
+CHECK_END_P2P5:
+      Test_AssertEqual(is_ok, 1);
+      PNM_FreeImage(image);
+    }
+#undef TESTWIDTH
+#undef TESTHEIGHT
+  }
+
+  /* P3フォーマットの書き込みテスト */
+  {
+#define TESTWIDTH   71
+#define TESTHEIGHT  50
+    struct PNMImage*  image;
+    const char*       test_filename[] = {
+      "./data/for_test_write_p3.ppm",
+      "./data/for_test_write_p6.ppm",
+    };
+    const PNMFormat   formats[] = { PNM_P3, PNM_P6 };
+    uint32_t          answer[TESTWIDTH][TESTHEIGHT][3];
+    uint32_t          x, y, i_test;
+    int32_t           is_ok;
+
+    for (i_test = 0; i_test < sizeof(test_filename) / sizeof(test_filename[0]); i_test++) {
+      /* 画像を作ってみる */
+      image = PNM_AllocateImage(TESTWIDTH, TESTHEIGHT);
+      image->format = formats[i_test];
+      image->max_brightness = 0xFF;
+      srand(0);
+      for (y = 0; y < TESTHEIGHT; y++) {
+        for (x = 0; x < TESTWIDTH; x++) {
+          answer[x][y][0] = rand() % 0x100;
+          answer[x][y][1] = rand() % 0x100;
+          answer[x][y][2] = rand() % 0x100;
+          PNMImg_R(image, x, y) = answer[x][y][0];
+          PNMImg_G(image, x, y) = answer[x][y][1];
+          PNMImg_B(image, x, y) = answer[x][y][2];
+        }
+      }
+
+      /* 書き込み */
+      Test_AssertEqual(PNM_WriteFile(test_filename[i_test], image), PNM_APIRESULT_OK);
+      PNM_FreeImage(image);
+
+      /* ちゃんと作れているか確認 */
+      image = PNM_ReadFile(test_filename[i_test]);
+      Test_AssertCondition(image != NULL);
+      Test_AssertEqual(image->format, formats[i_test]);
+
+      /* 内容確認 */
+      is_ok = 1;
+      for (y = 0; y < TESTHEIGHT; y++) {
+        for (x = 0; x < TESTWIDTH; x++) {
+          if ((PNMImg_R(image, x, y) != answer[x][y][0])
+              || (PNMImg_G(image, x, y) != answer[x][y][1])
+              || (PNMImg_B(image, x, y) != answer[x][y][2])) {
+            is_ok = 0;
+            goto CHECK_END_P3P6;
+          }
+        }
+      }
+CHECK_END_P3P6:
+      Test_AssertEqual(is_ok, 1);
+      PNM_FreeImage(image);
+    }
+
+#undef TESTWIDTH
+#undef TESTHEIGHT
+  }
+
+}
+
+/* 実画像の読み書きテスト */
+void testPNMBitWriter_ReadWritePNMImageTest(void *obj)
+{
+  TEST_UNUSED_PARAMETER(obj);
+
+  {
+    struct PNMImage*  image;
+    struct PNMImage*  test;
+    uint32_t i_test;
+    uint32_t is_ok, x, y;
+    const char*       test_filename[] = {
+      "./data/JPEG_ascii.pbm",
+      "./data/JPEG_ascii.pgm",
+      "./data/JPEG_ascii.ppm",
+      "./data/JPEG_bin.pbm",
+      "./data/JPEG_bin.pgm",
+      "./data/JPEG_bin.ppm",
+    };
+    const char*       temp_filename = "./data/tmp.bin";
+
+    /* 一回読み書きしたファイルが壊れていないか？ */
+    for (i_test = 0; i_test < sizeof(test_filename) / sizeof(test_filename[0]); i_test++) {
+      /* テストファイルを読み出し、内容はそのまま別名で書き出す */
+      image = PNM_ReadFile(test_filename[i_test]);
+      Test_AssertEqual(PNM_WriteFile(temp_filename, image), PNM_APIRESULT_OK);
+      /* 書き出したファイルを読む */
+      test  = PNM_ReadFile(temp_filename);
+
+      /* 基本情報の一致確認 */
+      Test_AssertEqual(image->format, test->format);
+      Test_AssertEqual(image->width,  test->width);
+      Test_AssertEqual(image->height, test->height);
+      if (image->format != PNM_P1 && image->format != PNM_P4) {
+        Test_AssertEqual(image->max_brightness, test->max_brightness);
+      }
+
+      /* 画素の一致確認 */
+      is_ok = 1;
+      for (y = 0; y < image->height; y++) {
+        for (x = 0; x < image->width; x++) {
+          if (memcmp(&(image->img[y][x]), &(test->img[y][x]), sizeof(PNMPixel)) != 0) {
+            is_ok = 0;
+            goto CHECK_END;
+          }
+        }
+      }
+CHECK_END:
+      Test_AssertEqual(is_ok, 1);
+      PNM_FreeImage(image);
+      PNM_FreeImage(test);
+    }
+
   }
 
 }
@@ -751,4 +1034,8 @@ void testPNM_Setup(void)
   Test_AddTest(suite, testPNMParser_ReadP5Test);
   Test_AddTest(suite, testPNMParser_ReadP6Test);
   Test_AddTest(suite, testPNMParser_ReadPNMImageTest);
+  Test_AddTest(suite, testPNMBitWriter_WriteBitTest);
+  Test_AddTest(suite, testPNMBitWriter_WritePNMImageTest);
+  Test_AddTest(suite, testPNMBitWriter_ReadWritePNMImageTest);
+
 }

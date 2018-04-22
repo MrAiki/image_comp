@@ -54,7 +54,10 @@ typedef enum PNMApiResultTag {
 /* ファイルオープン */
 struct PNMImage* PNM_ReadFile(const char* filename);
 
+/* 画像の領域解放 */
+void PNM_FreeImage(struct PNMImage* image);
+
 /* ファイル書き込み */
-void PNM_WriteFile(const char* filename, const struct PNMImage* img);
+PNMApiResult PNM_WriteFile(const char* filename, const struct PNMImage* image);
 
 #endif /* PNM_H_INCLUDED */

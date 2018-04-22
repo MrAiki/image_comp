@@ -35,7 +35,6 @@ struct PNMStringBuffer {
 };
 
 /* ビットバッファ */
-/* TODO: これもバイトバッファにする */
 struct PNMBitBuffer {
   uint8_t   bytes[PNMPARSER_BUFFER_LENGTH];   /* ビットバッファ */
   int8_t    bit_count;                        /* ビット入力カウント */
@@ -52,10 +51,17 @@ struct PNMParser {
   } u_buffer;
 };
 
+/* ライタ */
+struct PNMBitWriter {
+  FILE*     fp;                 /* 書き込みファイルポインタ */
+  uint8_t   bit_buffer;         /* 出力途中のビット */
+  int8_t    bit_count;          /* 出力カウント     */
+};
+
 /* ファイル読み込み */
 static struct PNMImage* PNM_Read(FILE* fp);
 /* ファイル書き込み */
-static void PNM_Write(FILE* fp, const struct PNMImage* img);
+static PNMError PNM_Write(FILE* fp, const struct PNMImage* img);
 /* ファイルヘッダ読み込み */
 static PNMError PNMParser_ReadHeader(struct PNMParser* parser, 
     PNMFormat *format, int32_t *width, int32_t *height, 
@@ -87,10 +93,28 @@ static PNMError PNMParser_ReadP5(struct PNMParser* parser, struct PNMImage* imag
 /* P6フォーマットファイルの読み込み */
 static PNMError PNMParser_ReadP6(struct PNMParser* parser, struct PNMImage* image);
 
+/* ライタの初期化 */
+static void PNMBitWriter_Initialize(struct PNMBitWriter* writer, FILE* fp);
+/* valの下位n_bitを書き込む */
+static PNMError PNMBitWriter_PutBits(struct PNMBitWriter* writer, uint64_t val, uint8_t n_bits);
+/* バッファにたまったビットをクリア */
+static void PNMBitWriter_Flush(struct PNMBitWriter* writer);
+
+/* P1フォーマットファイルの書き込み */
+static PNMError PNM_WriteP1(FILE* fp, const struct PNMImage* image);
+/* P2フォーマットファイルの書き込み */
+static PNMError PNM_WriteP2(FILE* fp, const struct PNMImage* image);
+/* P3フォーマットファイルの書き込み */
+static PNMError PNM_WriteP3(FILE* fp, const struct PNMImage* image);
+/* P4フォーマットファイルの書き込み */
+static PNMError PNM_WriteP4(FILE* fp, const struct PNMImage* image);
+/* P5フォーマットファイルの書き込み */
+static PNMError PNM_WriteP5(FILE* fp, const struct PNMImage* image);
+/* P6フォーマットファイルの書き込み */
+static PNMError PNM_WriteP6(FILE* fp, const struct PNMImage* image);
+
 /* 画像の領域割り当て */
 static struct PNMImage* PNM_AllocateImage(int32_t width, int32_t height);
-/* 画像の領域解放 */
-void PNM_FreeImage(struct PNMImage* image);
 
 /* ファイルオープン */
 struct PNMImage* PNM_ReadFile(const char* filename)
@@ -106,16 +130,25 @@ struct PNMImage* PNM_ReadFile(const char* filename)
 }
 
 /* ファイル書き込み */
-void PNM_WriteFile(const char* filename, const struct PNMImage* img)
+PNMApiResult PNM_WriteFile(const char* filename, const struct PNMImage* img)
 {
+  PNMError ret;
   FILE* fp = fopen(filename, "wb");
 
   if (fp == NULL) {
     fprintf(stderr, "Failed to open %s \n", filename);
-    return;
+    return PNM_APIRESULT_NG;
   }
 
-  PNM_Write(fp, img);
+  /* 書き込み */
+  ret = PNM_Write(fp, img);
+  fclose(fp);
+
+  if (ret != PNM_ERROR_OK) {
+    return PNM_APIRESULT_NG;
+  }
+
+  return PNM_APIRESULT_OK;
 }
 
 /* ファイル読み込み */
@@ -183,9 +216,55 @@ static struct PNMImage* PNM_Read(FILE* fp)
 }
 
 /* ファイル書き込み */
-static void PNM_Write(FILE* fp, const struct PNMImage* img)
+static PNMError PNM_Write(FILE* fp, const struct PNMImage* image)
 {
-  return;
+  PNMError write_err;
+
+  /* 引数チェック */
+  if (fp == NULL || image == NULL) {
+    return PNM_ERROR_INVALID_PARAMETER;
+  }
+
+  /* フォーマット文字列の書き込み */
+  switch (image->format) {
+    case PNM_P1: fputs("P1\n", fp); break;
+    case PNM_P2: fputs("P2\n", fp); break;
+    case PNM_P3: fputs("P3\n", fp); break;
+    case PNM_P4: fputs("P4\n", fp); break;
+    case PNM_P5: fputs("P5\n", fp); break;
+    case PNM_P6: fputs("P6\n", fp); break;
+    default:
+      fprintf(stderr, "Invalid format. \n");
+      return PNM_ERROR_NG;
+  }
+
+  /* 幅と高さの書き込み */
+  fprintf(fp, "%d %d\n", image->width, image->height);
+
+  /* P1,P4以外では最大輝度値を書き込む */
+  if (image->format != PNM_P1 && image->format != PNM_P4) {
+    if (image->max_brightness > 255) {
+      fprintf(stderr, "Unsupported max brightness(%d) \n",
+          image->max_brightness);
+      return PNM_ERROR_NG;
+    }
+    fprintf(fp, "%d\n", image->max_brightness);
+  }
+
+  /* フォーマット別の書き込みルーチンへ */
+  switch (image->format) {
+    case PNM_P1: write_err = PNM_WriteP1(fp, image); break;
+    case PNM_P2: write_err = PNM_WriteP2(fp, image); break;
+    case PNM_P3: write_err = PNM_WriteP3(fp, image); break;
+    case PNM_P4: write_err = PNM_WriteP4(fp, image); break;
+    case PNM_P5: write_err = PNM_WriteP5(fp, image); break;
+    case PNM_P6: write_err = PNM_WriteP6(fp, image); break;
+    default:
+      fprintf(stderr, "Image data write error. \n");
+      return PNM_ERROR_NG;
+  }
+
+  return PNM_ERROR_OK;
 }
 
 /* ファイルヘッダ読み込み */
@@ -272,8 +351,8 @@ static struct PNMImage* PNM_AllocateImage(int32_t width, int32_t height)
   if (pnm == NULL) {
     return NULL;
   }
-  pnm->height = height;
   pnm->width  = width;
+  pnm->height = height;
 
   /* 画素領域の割り当て */
   img = (PNMPixel **)malloc(sizeof(PNMPixel*) * height);
@@ -399,11 +478,11 @@ static PNMError PNMParser_ReadP4(struct PNMParser* parser, struct PNMImage* imag
   for (y = 0; y < image->height; y++) {
     for (x = 0; x < image->width; x++) {
       tmp = PNMParser_GetBits(parser, 1);
-      if (tmp < 0) { return PNM_ERROR_IO; }
+      if (tmp < 0) {  return PNM_ERROR_IO; }
       PNMImg_BIT(image, x, y) = tmp;
     }
     /* HACK:ストライドはバイト単位になるため、
-     * 末端ビットは0が埋まっている. 
+     * 横方向の末端ビットは0が埋まっている. 
      * -> リセットを掛けて読み飛ばす */
     parser->u_buffer.b.bit_count = 0;
   }
@@ -453,6 +532,154 @@ static PNMError PNMParser_ReadP6(struct PNMParser* parser, struct PNMImage* imag
       tmp = PNMParser_GetBits(parser, 8);
       if (tmp < 0) { return PNM_ERROR_IO; }
       PNMImg_B(image, x, y) = tmp;
+    }
+  }
+
+  return PNM_ERROR_OK;
+}
+
+/* P1フォーマットファイルの書き込み */
+static PNMError PNM_WriteP1(FILE* fp, const struct PNMImage* image)
+{
+  uint32_t x, y;
+  int32_t bit;
+
+  for (y = 0; y < image->height; y++) {
+    for (x = 0; x < image->width; x++) {
+      bit = PNMImg_BIT(image, x, y);
+      if (bit != 0 && bit != 1) { 
+        return PNM_ERROR_NG;
+      }
+      fprintf(fp, "%d ", bit);
+    }
+    fputs("\n", fp);
+  }
+
+  return PNM_ERROR_OK;
+}
+
+/* P2フォーマットファイルの書き込み */
+static PNMError PNM_WriteP2(FILE* fp, const struct PNMImage* image)
+{
+  uint32_t x, y;
+  uint32_t gray;
+
+  for (y = 0; y < image->height; y++) {
+    for (x = 0; x < image->width; x++) {
+      gray = PNMImg_GRAY(image, x, y);
+      if (gray > image->max_brightness) { 
+        return PNM_ERROR_NG;
+      }
+      fprintf(fp, "%d ", gray);
+    }
+    fputs("\n", fp);
+  }
+
+  return PNM_ERROR_OK;
+}
+
+/* P3フォーマットファイルの書き込み */
+static PNMError PNM_WriteP3(FILE* fp, const struct PNMImage* image)
+{
+  uint32_t x, y;
+  uint32_t r, g, b;
+
+  for (y = 0; y < image->height; y++) {
+    for (x = 0; x < image->width; x++) {
+      r = PNMImg_R(image, x, y);
+      g = PNMImg_G(image, x, y);
+      b = PNMImg_B(image, x, y);
+      if (r > image->max_brightness
+          || g > image->max_brightness
+          || b > image->max_brightness) {
+        return PNM_ERROR_NG;
+      }
+      fprintf(fp, "%d %d %d ", r, g, b);
+    }
+    fputs("\n", fp);
+  }
+
+  return PNM_ERROR_OK;
+}
+
+/* P4フォーマットファイルの書き込み */
+static PNMError PNM_WriteP4(FILE* fp, const struct PNMImage* image)
+{
+  uint32_t x, y;
+  uint32_t bit;
+  struct PNMBitWriter writer;
+
+  /* ビットライタ初期化 */
+  PNMBitWriter_Initialize(&writer, fp);
+
+  for (y = 0; y < image->height; y++) {
+    for (x = 0; x < image->width; x++) {
+      bit = PNMImg_BIT(image, x, y);
+      if (bit != 0 && bit != 1) { 
+        return PNM_ERROR_NG;
+      }
+      if (PNMBitWriter_PutBits(&writer, bit, 1) != PNM_ERROR_OK) {
+        return PNM_ERROR_IO;
+      }
+    }
+    /* ストライドはバイト単位
+     * -> 余ったビットを吐き出し、残りは0で埋める */
+    PNMBitWriter_Flush(&writer);
+  }
+
+  return PNM_ERROR_OK;
+}
+
+/* P5フォーマットファイルの書き込み */
+static PNMError PNM_WriteP5(FILE* fp, const struct PNMImage* image)
+{
+  uint32_t x, y;
+  uint32_t gray;
+  struct PNMBitWriter writer;
+
+  /* ビットライタ初期化 */
+  PNMBitWriter_Initialize(&writer, fp);
+
+  for (y = 0; y < image->height; y++) {
+    for (x = 0; x < image->width; x++) {
+      gray = PNMImg_GRAY(image, x, y);
+      if (gray > image->max_brightness) { 
+        return PNM_ERROR_NG;
+      }
+      if (PNMBitWriter_PutBits(&writer, gray, 8) != PNM_ERROR_OK) {
+        return PNM_ERROR_IO;
+      }
+    }
+  }
+
+  return PNM_ERROR_OK;
+}
+
+/* P6フォーマットファイルの書き込み */
+static PNMError PNM_WriteP6(FILE* fp, const struct PNMImage* image)
+{
+  uint32_t x, y;
+  uint32_t r, g, b;
+  struct PNMBitWriter writer;
+
+  /* ビットライタ初期化 */
+  PNMBitWriter_Initialize(&writer, fp);
+
+  for (y = 0; y < image->height; y++) {
+    for (x = 0; x < image->width; x++) {
+      r = PNMImg_R(image, x, y);
+      g = PNMImg_G(image, x, y);
+      b = PNMImg_B(image, x, y);
+      if (r > image->max_brightness
+          || g > image->max_brightness
+          || b > image->max_brightness) {
+        return PNM_ERROR_NG;
+      }
+      if ((PNMBitWriter_PutBits(&writer, r, 8) != PNM_ERROR_OK)
+          || (PNMBitWriter_PutBits(&writer, g, 8) != PNM_ERROR_OK)
+          || (PNMBitWriter_PutBits(&writer, b, 8) != PNM_ERROR_OK)) {
+        return PNM_ERROR_IO;
+      }
     }
   }
 
@@ -617,4 +844,58 @@ static int32_t PNMParser_GetBits(struct PNMParser* parser, uint8_t n_bits)
   tmp            |= PNM_GetLowerBits(n_bits, buf->bytes[buf->byte_pos] >> buf->bit_count);
 
   return tmp;
+}
+
+/* ライタの初期化 */
+static void PNMBitWriter_Initialize(struct PNMBitWriter* writer, FILE* fp)
+{
+  writer->fp          = fp;
+  writer->bit_count   = 8;
+  writer->bit_buffer  = 0;
+}
+
+/* valの下位n_bitを書き込む */
+static PNMError PNMBitWriter_PutBits(struct PNMBitWriter* writer, uint64_t val, uint8_t n_bits)
+{
+  /* 無効な引数 */
+  if (writer == NULL) {
+    return PNM_ERROR_INVALID_PARAMETER;
+  }
+
+  /* valの上位ビットから順次出力
+   * 初回ループでは端数（出力に必要なビット数）分を埋め出力
+   * 2回目以降は8bit単位で出力 */
+  while (n_bits >= writer->bit_count) {
+    n_bits -= writer->bit_count;
+    writer->bit_buffer |= PNM_GetLowerBits(writer->bit_count, val >> n_bits);
+
+    if (fputc(writer->bit_buffer, writer->fp) == EOF) {
+      return PNM_ERROR_IO;
+    }
+
+    writer->bit_buffer  = 0;
+    writer->bit_count   = 8;
+  }
+
+  /* 端数ビットの処理:
+   * 残った分をバッファの上位ビットにセット */
+  writer->bit_count -= n_bits;
+  writer->bit_buffer |= PNM_GetLowerBits(n_bits, val) << writer->bit_count;
+
+  return PNM_ERROR_OK;
+}
+
+/* バッファにたまったビットをクリア */
+static void PNMBitWriter_Flush(struct PNMBitWriter* writer)
+{
+  if (writer == NULL) {
+    return;
+  }
+
+  /* バッファに余ったビットを強制出力 */
+  if (writer->bit_count != 8) {
+    PNMBitWriter_PutBits(writer, 0, writer->bit_count);
+    writer->bit_buffer = 0;
+    writer->bit_count  = 8;
+  }
 }
