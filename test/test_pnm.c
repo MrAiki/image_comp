@@ -689,7 +689,6 @@ void testPNMParser_ReadPNMImageTest(void *obj)
             imginx = y * image->width + x;
             if (PNMImg_BIT(image, x, y) != imgdata_answers[i_test][imginx]) {
               is_ok = 0;
-              printf("FAILED in %d\n", format_answer[i_test]);
               goto CHECK_END;
             }
           }
