@@ -5,7 +5,7 @@
 #include <ctype.h>
 #include <string.h>
 
-/* パーサが読み込み可能な最大文字数 */
+/* パーサの読み込みバッファサイズ */
 #define PNMPARSER_BUFFER_LENGTH         256
 /* パーサが読み込み可能な整数の最大桁数 */
 #define PNMPARSER_MAX_NUMBER_OF_DIGHTS  20
@@ -69,9 +69,6 @@ static int32_t PNMParser_GetNextCharacter(struct PNMParser* parser);
 static int32_t PNMParser_GetNextString(struct PNMParser* parser, char* buffer, uint32_t buffer_size);
 /* 次の整数を読み取る */
 static int32_t PNMParser_GetNextInteger(struct PNMParser* parser);
-/* 1ビット取得 */
-/* エラー時は負値を返す */
-static int32_t PNMParser_GetBit(struct PNMParser* parser);
 /* n_bit 取得し、結果を右詰めする */
 /* エラー時は負値を返す */
 static int32_t PNMParser_GetBits(struct PNMParser* parser, uint8_t n_bits);
@@ -117,7 +114,7 @@ void PNM_WriteFile(const char* filename, const struct PNMImage* img)
     return;
   }
 
-  return PNM_Write(fp, img);
+  PNM_Write(fp, img);
 }
 
 /* ファイル読み込み */
@@ -163,12 +160,15 @@ static struct PNMImage* PNM_Read(FILE* fp)
       read_err = PNMParser_ReadP3(&parser, pnm);
       break;
     case PNM_P4:
+      PNMParser_InitializeForBinary(&parser, parser.fp);
       read_err = PNMParser_ReadP4(&parser, pnm);
       break;
     case PNM_P5:
+      PNMParser_InitializeForBinary(&parser, parser.fp);
       read_err = PNMParser_ReadP5(&parser, pnm);
       break;
     case PNM_P6:
+      PNMParser_InitializeForBinary(&parser, parser.fp);
       read_err = PNMParser_ReadP6(&parser, pnm);
       break;
   }
@@ -236,6 +236,10 @@ static PNMError PNMParser_ReadHeader(struct PNMParser* parser,
     max_tmp = PNMParser_GetNextInteger(parser);
     if (max_tmp < 0) {
       fprintf(stderr, "Invalid max brightness(%d). \n", max_tmp);
+      return PNM_ERROR_NG;
+    } else if (max_tmp > 255) {
+      /* 今は1bitより大きい輝度は対応していない */
+      fprintf(stderr, "Unsupported max brightness(%d) \n", max_tmp);
       return PNM_ERROR_NG;
     }
   } else {
@@ -393,10 +397,14 @@ static PNMError PNMParser_ReadP4(struct PNMParser* parser, struct PNMImage* imag
 
   for (y = 0; y < image->height; y++) {
     for (x = 0; x < image->width; x++) {
-      tmp = PNMParser_GetBit(parser);
+      tmp = PNMParser_GetBits(parser, 1);
       if (tmp < 0) { return PNM_ERROR_IO; }
       image->img[y][x].b = tmp;
     }
+    /* ストライドはバイト単位になるため、
+     * 末端ビットは0が埋まっている. 
+     * -> リセットを掛けて読み飛ばす */
+    PNMParser_InitializeForBinary(parser, parser->fp);
   }
 
   return PNM_ERROR_OK;
@@ -407,6 +415,10 @@ static PNMError PNMParser_ReadP5(struct PNMParser* parser, struct PNMImage* imag
 {
   int32_t   tmp;
   uint32_t  x, y;
+
+  if (parser == NULL || image == NULL) {
+    return PNM_ERROR_INVALID_PARAMETER;
+  }
 
   for (y = 0; y < image->height; y++) {
     for (x = 0; x < image->width; x++) {
@@ -424,6 +436,10 @@ static PNMError PNMParser_ReadP6(struct PNMParser* parser, struct PNMImage* imag
 {
   int32_t   tmp;
   uint32_t  x, y;
+
+  if (parser == NULL || image == NULL) {
+    return PNM_ERROR_INVALID_PARAMETER;
+  }
 
   for (y = 0; y < image->height; y++) {
     for (x = 0; x < image->width; x++) {
@@ -446,6 +462,7 @@ static PNMError PNMParser_ReadP6(struct PNMParser* parser, struct PNMImage* imag
 static void PNMParser_InitializeForText(struct PNMParser* parser, FILE* fp)
 {
   parser->fp                  = fp;
+  memset(&parser->u_buffer, 0, sizeof(struct PNMStringBuffer));
   parser->u_buffer.s.read_pos = -1;
 }
 
@@ -453,7 +470,9 @@ static void PNMParser_InitializeForText(struct PNMParser* parser, FILE* fp)
 static void PNMParser_InitializeForBinary(struct PNMParser* parser, FILE* fp)
 {
   parser->fp                    = fp;
+  memset(&parser->u_buffer, 0, sizeof(struct PNMBitBuffer));
   parser->u_buffer.b.bit_count  = 0;
+  parser->u_buffer.b.bit_buffer = 0;
 }
 
 /* 次の文字の読み込み */
@@ -462,13 +481,9 @@ static int32_t PNMParser_GetNextCharacter(struct PNMParser* parser)
   int32_t ch;
   struct PNMStringBuffer *buf = &(parser->u_buffer.s);
 
-  /* バッファを使い切ったら読み込みを要求 */
-  if (buf->read_pos == PNMPARSER_BUFFER_LENGTH) {
-    buf->read_pos = -1;
-  }
-
-  /* 新しい行の読み込み */
-  if (buf->read_pos == -1) {
+  /* 文字の読み込み */
+  if (buf->read_pos == -1
+      || buf->read_pos == (PNMPARSER_BUFFER_LENGTH-1)) {
     if (fgets(buf->string, PNMPARSER_BUFFER_LENGTH, parser->fp) != NULL) {
       /* 読み込み位置は0に */
       buf->read_pos = 0; 
@@ -481,7 +496,7 @@ static int32_t PNMParser_GetNextCharacter(struct PNMParser* parser)
   /* バッファから1文字読み込み */
   ch = buf->string[buf->read_pos++];
 
-  /* ナル文字: ファイル終端 */
+  /* バッファ途中のナル文字: ファイル終端 */
   if (ch == '\0') {
     return EOF;
   }
@@ -551,30 +566,6 @@ static int32_t PNMParser_GetNextInteger(struct PNMParser* parser)
   }
 
   return ret;
-}
-
-/* 1ビット取得 */
-/* エラー時は負値を返す */
-static int32_t PNMParser_GetBit(struct PNMParser* parser)
-{
-  int32_t ch;
-  struct PNMBitBuffer *buf = &(parser->u_buffer.b);
-
-  /* 入力ビットカウントを1減らし、バッファの対象ビットを出力 */
-  buf->bit_count--;
-  if (buf->bit_count >= 0) {
-    return (buf->bit_buffer >> buf->bit_count) & 1;
-  }
-
-  /* カウンタとバッファの更新 */
-  if ((ch = getc(parser->fp)) == EOF) {
-    return -1;
-  }
-  buf->bit_count   = 7;
-  buf->bit_buffer  = ch;
-
-  /* 取得したバッファの最上位ビットを出力 */
-  return (buf->bit_buffer >> 7) & 1;
 }
 
 /* n_bit 取得し、結果を右詰めする */

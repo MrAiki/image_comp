@@ -5,6 +5,11 @@
 /* テスト対象のモジュール */
 #include "../pnm.c"
 
+/* 画像の解答データ */
+#include "./data/JPEG_ascii_pbm_answer.h"
+#include "./data/JPEG_ascii_pgm_answer.h"
+#include "./data/JPEG_ascii_ppm_answer.h"
+
 int testPNM_Initialize(void *obj)
 {
   TEST_UNUSED_PARAMETER(obj);
@@ -160,7 +165,7 @@ void testPNMParser_ParseBinaryTest(void *obj)
     /* 一致確認 */
     for (i = 0; i < 4; i++) {
       for (shift = 0; shift < 8; shift++) {
-        test = PNMParser_GetBit(&parser);
+        test = PNMParser_GetBits(&parser, 1);
         ans  = (answer[i] >> (7-shift)) & 1;
         Test_AssertEqual(test, ans);
       }
@@ -217,7 +222,7 @@ void testPNMParser_ParseBinaryTest(void *obj)
     PNMParser_InitializeForBinary(&parser, fp);
     for (i = 0; i < ANSWER_BINARY_SIZE; i++) {
       for (shift = 0; shift < 8; shift++) {
-        test = PNMParser_GetBit(&parser);
+        test = PNMParser_GetBits(&parser, 1);
         ans  = (answer[i] >> (7-shift)) & 1;
         Test_AssertEqual(test, ans);
       }
@@ -265,11 +270,11 @@ void testPNMParser_ReadHeaderTest(void *obj)
       fp = fopen(test_filename, "wb");
       if (format_ans[i_test] == PNM_P1
           || format_ans[i_test] == PNM_P4) {
-        fprintf(fp, "%s \n#Aikatsu!Aikatsu!\n%d %d",
+        fprintf(fp, "%s \n# Aikatsu!Aikatsu!\n%d %d",
             format_strs[i_test], 
             test_width, test_height);
       } else {
-        fprintf(fp, "%s \n#Aikatsu!Aikatsu!\n%d %d\n%d",
+        fprintf(fp, "%s \n# Aikatsu!Aikatsu!\n%d %d\n%d",
             format_strs[i_test], 
             test_width, test_height, test_max_brightness);
       }
@@ -629,6 +634,126 @@ void testPNMParser_ReadP6Test(void *obj)
   }
 }
 
+/* 実画像の読み込みテスト */
+void testPNMParser_ReadPNMImageTest(void *obj)
+{
+  TEST_UNUSED_PARAMETER(obj);
+
+  /* テスト画像の幅と高さ */
+  const uint32_t TESTIMG_WIDTH  = 250;
+  const uint32_t TESTIMG_HEIGHT = 250;
+
+  /* 読み込みテスト */
+  {
+    int32_t is_ok;
+    uint32_t x, y, imginx;
+    struct PNMImage* image;
+    uint32_t i_test;
+    const char *filename[] = {
+      "./data/JPEG_ascii.pbm",
+      "./data/JPEG_ascii.pgm",
+      "./data/JPEG_ascii.ppm",
+      "./data/JPEG_bin.pbm",
+      "./data/JPEG_bin.pgm",
+      "./data/JPEG_bin.ppm",
+    };
+    const PNMFormat format_answer[] = {
+      PNM_P1, PNM_P2, PNM_P3, PNM_P4, PNM_P5, PNM_P6
+    };
+    const uint8_t* imgdata_answers[] = {
+      JPEG_ascii_pbm_answer,
+      JPEG_ascii_pgm_answer,
+      JPEG_ascii_ppm_answer,
+      JPEG_ascii_pbm_answer,
+      JPEG_ascii_pgm_answer,
+      JPEG_ascii_ppm_answer,
+    };
+    const uint32_t NUM_TESTS = sizeof(filename) / sizeof(filename[0]);
+
+    for (i_test = 0; i_test < NUM_TESTS; i_test++) {
+      /* 読み込み */
+      image = PNM_ReadFile(filename[i_test]);
+      Test_AssertCondition(image != NULL);
+
+      /* 正しく取得できたか確認 */
+      Test_AssertEqual(image->format, format_answer[i_test]);
+      Test_AssertEqual(image->width,  TESTIMG_WIDTH);
+      Test_AssertEqual(image->height, TESTIMG_HEIGHT);
+
+
+//      if (format_answer[i_test] == PNM_P4) {
+//        puts("ANS:");
+//        for (y = 0; y < image->height; y++) {
+//          for (x = 0; x < image->width; x++) {
+//            imginx = y * image->width + x;
+//            printf("%d", JPEG_ascii_pbm_answer[imginx]);
+//          }
+//          puts("");
+//        }
+//      }
+
+      /* 内容確認 */
+      is_ok = 1;
+      if (format_answer[i_test] == PNM_P1
+          || format_answer[i_test] == PNM_P4) {
+        for (y = 0; y < image->height; y++) {
+          for (x = 0; x < image->width; x++) {
+            imginx = y * image->width + x;
+            if (PNMImg_BIT(image, x, y) != imgdata_answers[i_test][imginx]) {
+              is_ok = 0;
+              printf("FAILED in %d\n", format_answer[i_test]);
+              goto CHECK_END;
+            }
+            if (format_answer[i_test] == PNM_P4) {
+              /*
+              printf("(%d,%d) GET:%d ANS:%d\n",
+                  x, y,
+                  PNMImg_BIT(image, x, y), imgdata_answers[i_test][imginx]);
+                  */
+            }
+          }
+        }
+      } else if (format_answer[i_test] == PNM_P2
+          || format_answer[i_test] == PNM_P5) {
+        for (y = 0; y < image->height; y++) {
+          for (x = 0; x < image->width; x++) {
+            imginx = y * image->width + x;
+            if (PNMImg_GRAY(image, x, y) != imgdata_answers[i_test][imginx]) {
+              is_ok = 0;
+              goto CHECK_END;
+            }
+          }
+        }
+      } else if (format_answer[i_test] == PNM_P3
+          || format_answer[i_test] == PNM_P6) {
+        for (y = 0; y < image->height; y++) {
+          for (x = 0; x < image->width; x++) {
+            imginx = 3 * (y * image->width + x);
+            if (PNMImg_R(image, x, y) != imgdata_answers[i_test][imginx+0]
+                || PNMImg_G(image, x, y) != imgdata_answers[i_test][imginx+1]
+                || PNMImg_B(image, x, y) != imgdata_answers[i_test][imginx+2]) {
+              is_ok = 0;
+              goto CHECK_END;
+            }
+          }
+        }
+      } else {
+        is_ok = 0;
+      }
+
+CHECK_END:
+      Test_AssertEqual(is_ok, 1);
+      PNM_FreeImage(image);
+    }
+
+  }
+
+  /* 読み出したデータを何もせずに壊れていないか確認 */
+  {
+  }
+
+}
+
 void testPNM_Setup(void)
 {
   struct TestSuite *suite
@@ -645,4 +770,5 @@ void testPNM_Setup(void)
   Test_AddTest(suite, testPNMParser_ReadP4Test);
   Test_AddTest(suite, testPNMParser_ReadP5Test);
   Test_AddTest(suite, testPNMParser_ReadP6Test);
+  Test_AddTest(suite, testPNMParser_ReadPNMImageTest);
 }
