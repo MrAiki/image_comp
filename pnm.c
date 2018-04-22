@@ -400,7 +400,7 @@ static PNMError PNMParser_ReadP4(struct PNMParser* parser, struct PNMImage* imag
     for (x = 0; x < image->width; x++) {
       tmp = PNMParser_GetBits(parser, 1);
       if (tmp < 0) { return PNM_ERROR_IO; }
-      image->img[y][x].b = tmp;
+      PNMImg_BIT(image, x, y) = tmp;
     }
     /* HACK:ストライドはバイト単位になるため、
      * 末端ビットは0が埋まっている. 
@@ -425,7 +425,7 @@ static PNMError PNMParser_ReadP5(struct PNMParser* parser, struct PNMImage* imag
     for (x = 0; x < image->width; x++) {
       tmp = PNMParser_GetBits(parser, 8);
       if (tmp < 0) { return PNM_ERROR_IO; }
-      image->img[y][x].g = tmp;
+      PNMImg_GRAY(image, x, y) = tmp;
     }
   }
 
@@ -446,13 +446,13 @@ static PNMError PNMParser_ReadP6(struct PNMParser* parser, struct PNMImage* imag
     for (x = 0; x < image->width; x++) {
       tmp = PNMParser_GetBits(parser, 8);
       if (tmp < 0) { return PNM_ERROR_IO; }
-      image->img[y][x].c.r = tmp;
+      PNMImg_R(image, x, y) = tmp;
       tmp = PNMParser_GetBits(parser, 8);
       if (tmp < 0) { return PNM_ERROR_IO; }
-      image->img[y][x].c.g = tmp;
+      PNMImg_G(image, x, y) = tmp;
       tmp = PNMParser_GetBits(parser, 8);
       if (tmp < 0) { return PNM_ERROR_IO; }
-      image->img[y][x].c.b = tmp;
+      PNMImg_B(image, x, y) = tmp;
     }
   }
 
