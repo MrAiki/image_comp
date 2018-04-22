@@ -680,18 +680,6 @@ void testPNMParser_ReadPNMImageTest(void *obj)
       Test_AssertEqual(image->width,  TESTIMG_WIDTH);
       Test_AssertEqual(image->height, TESTIMG_HEIGHT);
 
-
-//      if (format_answer[i_test] == PNM_P4) {
-//        puts("ANS:");
-//        for (y = 0; y < image->height; y++) {
-//          for (x = 0; x < image->width; x++) {
-//            imginx = y * image->width + x;
-//            printf("%d", JPEG_ascii_pbm_answer[imginx]);
-//          }
-//          puts("");
-//        }
-//      }
-
       /* 内容確認 */
       is_ok = 1;
       if (format_answer[i_test] == PNM_P1
@@ -703,13 +691,6 @@ void testPNMParser_ReadPNMImageTest(void *obj)
               is_ok = 0;
               printf("FAILED in %d\n", format_answer[i_test]);
               goto CHECK_END;
-            }
-            if (format_answer[i_test] == PNM_P4) {
-              /*
-              printf("(%d,%d) GET:%d ANS:%d\n",
-                  x, y,
-                  PNMImg_BIT(image, x, y), imgdata_answers[i_test][imginx]);
-                  */
             }
           }
         }
