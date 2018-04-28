@@ -264,6 +264,10 @@ static PNMError PNM_Write(FILE* fp, const struct PNMImage* image)
       return PNM_ERROR_NG;
   }
 
+  if (write_err != PNM_ERROR_OK) {
+    return PNM_ERROR_NG;
+  }
+
   return PNM_ERROR_OK;
 }
 
