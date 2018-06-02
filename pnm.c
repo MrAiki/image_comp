@@ -59,13 +59,12 @@ struct PNMBitWriter {
 };
 
 /* ファイル読み込み */
-static struct PNMImage* PNM_Read(FILE* fp);
+static struct PNMPicture* PNM_CreatePictureFromFilePointer(FILE* fp);
 /* ファイル書き込み */
-static PNMError PNM_Write(FILE* fp, const struct PNMImage* img);
+static PNMError PNM_WritePictureToFilePointer(FILE* fp, const struct PNMPicture* picture);
 /* ファイルヘッダ読み込み */
 static PNMError PNMParser_ReadHeader(struct PNMParser* parser, 
-    PNMFormat *format, int32_t *width, int32_t *height, 
-    int32_t *max_brightness);
+    struct PNMHeader* header);
 /* パーサの初期化 */
 static void PNMParser_InitializeForText(struct PNMParser* parser, FILE* fp);
 /* パーサの初期化 */
@@ -81,17 +80,17 @@ static int32_t PNMParser_GetNextInteger(struct PNMParser* parser);
 static int32_t PNMParser_GetBits(struct PNMParser* parser, uint8_t n_bits);
 
 /* P1フォーマットファイルの読み込み */
-static PNMError PNMParser_ReadP1(struct PNMParser* parser, struct PNMImage* img);
+static PNMError PNMParser_ReadP1(struct PNMParser* parser, struct PNMPicture* picture);
 /* P2フォーマットファイルの読み込み */
-static PNMError PNMParser_ReadP2(struct PNMParser* parser, struct PNMImage* img);
+static PNMError PNMParser_ReadP2(struct PNMParser* parser, struct PNMPicture* picture);
 /* P3フォーマットファイルの読み込み */
-static PNMError PNMParser_ReadP3(struct PNMParser* parser, struct PNMImage* img);
+static PNMError PNMParser_ReadP3(struct PNMParser* parser, struct PNMPicture* picture);
 /* P4フォーマットファイルの読み込み */
-static PNMError PNMParser_ReadP4(struct PNMParser* parser, struct PNMImage* image);
+static PNMError PNMParser_ReadP4(struct PNMParser* parser, struct PNMPicture* picture);
 /* P5フォーマットファイルの読み込み */
-static PNMError PNMParser_ReadP5(struct PNMParser* parser, struct PNMImage* image);
+static PNMError PNMParser_ReadP5(struct PNMParser* parser, struct PNMPicture* picture);
 /* P6フォーマットファイルの読み込み */
-static PNMError PNMParser_ReadP6(struct PNMParser* parser, struct PNMImage* image);
+static PNMError PNMParser_ReadP6(struct PNMParser* parser, struct PNMPicture* picture);
 
 /* ライタの初期化 */
 static void PNMBitWriter_Initialize(struct PNMBitWriter* writer, FILE* fp);
@@ -101,23 +100,23 @@ static PNMError PNMBitWriter_PutBits(struct PNMBitWriter* writer, uint64_t val, 
 static void PNMBitWriter_Flush(struct PNMBitWriter* writer);
 
 /* P1フォーマットファイルの書き込み */
-static PNMError PNM_WriteP1(FILE* fp, const struct PNMImage* image);
+static PNMError PNM_WriteP1(FILE* fp, const struct PNMPicture* picture);
 /* P2フォーマットファイルの書き込み */
-static PNMError PNM_WriteP2(FILE* fp, const struct PNMImage* image);
+static PNMError PNM_WriteP2(FILE* fp, const struct PNMPicture* picture);
 /* P3フォーマットファイルの書き込み */
-static PNMError PNM_WriteP3(FILE* fp, const struct PNMImage* image);
+static PNMError PNM_WriteP3(FILE* fp, const struct PNMPicture* picture);
 /* P4フォーマットファイルの書き込み */
-static PNMError PNM_WriteP4(FILE* fp, const struct PNMImage* image);
+static PNMError PNM_WriteP4(FILE* fp, const struct PNMPicture* picture);
 /* P5フォーマットファイルの書き込み */
-static PNMError PNM_WriteP5(FILE* fp, const struct PNMImage* image);
+static PNMError PNM_WriteP5(FILE* fp, const struct PNMPicture* picture);
 /* P6フォーマットファイルの書き込み */
-static PNMError PNM_WriteP6(FILE* fp, const struct PNMImage* image);
+static PNMError PNM_WriteP6(FILE* fp, const struct PNMPicture* picture);
 
 /* 画像の領域割り当て */
-static struct PNMImage* PNM_AllocateImage(int32_t width, int32_t height);
+struct PNMPicture* PNM_CreatePicture(uint32_t width, uint32_t height);
 
 /* ファイルオープン */
-struct PNMImage* PNM_ReadFile(const char* filename)
+struct PNMPicture* PNM_CreatePictureFromFile(const char* filename)
 {
   FILE* fp = fopen(filename, "rb");
 
@@ -126,11 +125,11 @@ struct PNMImage* PNM_ReadFile(const char* filename)
     return NULL;
   }
 
-  return PNM_Read(fp);
+  return PNM_CreatePictureFromFilePointer(fp);
 }
 
 /* ファイル書き込み */
-PNMApiResult PNM_WriteFile(const char* filename, const struct PNMImage* img)
+PNMApiResult PNM_WritePictureToFile(const char* filename, const struct PNMPicture* picture)
 {
   PNMError ret;
   FILE* fp = fopen(filename, "wb");
@@ -141,7 +140,7 @@ PNMApiResult PNM_WriteFile(const char* filename, const struct PNMImage* img)
   }
 
   /* 書き込み */
-  ret = PNM_Write(fp, img);
+  ret = PNM_WritePictureToFilePointer(fp, picture);
   fclose(fp);
 
   if (ret != PNM_ERROR_OK) {
@@ -152,20 +151,18 @@ PNMApiResult PNM_WriteFile(const char* filename, const struct PNMImage* img)
 }
 
 /* ファイル読み込み */
-static struct PNMImage* PNM_Read(FILE* fp)
+static struct PNMPicture* PNM_CreatePictureFromFilePointer(FILE* fp)
 {
   struct PNMParser  parser;
-  struct PNMImage   *pnm;
+  struct PNMPicture *pnm;
+  struct PNMHeader  header;
   PNMError          read_err;
-  int32_t           width, height, max_brightness;
-  PNMFormat         format;
 
   /* パーサ初期化 */
   PNMParser_InitializeForText(&parser, fp);
 
   /* ヘッダ読み込み */
-  read_err = PNMParser_ReadHeader(&parser, 
-      &format, &width, &height, &max_brightness);
+  read_err = PNMParser_ReadHeader(&parser, &header);
 
   /* ヘッダ読み込みエラー */
   if (read_err != PNM_ERROR_OK) {
@@ -174,16 +171,16 @@ static struct PNMImage* PNM_Read(FILE* fp)
   }
 
   /* 画像領域の領域確保 */
-  pnm = PNM_AllocateImage(width, height);
+  pnm = PNM_CreatePicture(header.width, header.height);
   if (pnm == NULL) {
-    fprintf(stderr, "Failed to allocate image buffer. \n");
+    fprintf(stderr, "Failed to allocate picture buffer. \n");
     return NULL;
   }
-  pnm->format         = format;
-  pnm->max_brightness = max_brightness;
+  /* ヘッダを設定 */
+  pnm->header = header;
 
   /* タイプに合わせて画素値を取得 */
-  switch (format) {
+  switch (header.format) {
     case PNM_P1:
       read_err = PNMParser_ReadP1(&parser, pnm);
       break;
@@ -208,7 +205,7 @@ static struct PNMImage* PNM_Read(FILE* fp)
   }
 
   if (read_err != PNM_ERROR_OK) {
-    fprintf(stderr, "Failed to get image data. \n");
+    fprintf(stderr, "Failed to get picture data. \n");
     return NULL;
   }
 
@@ -216,17 +213,21 @@ static struct PNMImage* PNM_Read(FILE* fp)
 }
 
 /* ファイル書き込み */
-static PNMError PNM_Write(FILE* fp, const struct PNMImage* image)
+static PNMError PNM_WritePictureToFilePointer(FILE* fp, const struct PNMPicture* picture)
 {
   PNMError write_err;
+  const struct PNMHeader *header;
 
   /* 引数チェック */
-  if (fp == NULL || image == NULL) {
+  if (fp == NULL || picture == NULL) {
     return PNM_ERROR_INVALID_PARAMETER;
   }
 
+  /* ヘッダ読み出し */
+  header = &(picture->header);
+
   /* フォーマット文字列の書き込み */
-  switch (image->format) {
+  switch (header->format) {
     case PNM_P1: fputs("P1\n", fp); break;
     case PNM_P2: fputs("P2\n", fp); break;
     case PNM_P3: fputs("P3\n", fp); break;
@@ -239,28 +240,28 @@ static PNMError PNM_Write(FILE* fp, const struct PNMImage* image)
   }
 
   /* 幅と高さの書き込み */
-  fprintf(fp, "%d %d\n", image->width, image->height);
+  fprintf(fp, "%d %d\n", header->width, header->height);
 
   /* P1,P4以外では最大輝度値を書き込む */
-  if (image->format != PNM_P1 && image->format != PNM_P4) {
-    if (image->max_brightness > 255) {
+  if (header->format != PNM_P1 && header->format != PNM_P4) {
+    if (header->max_brightness > 255) {
       fprintf(stderr, "Unsupported max brightness(%d) \n",
-          image->max_brightness);
+          header->max_brightness);
       return PNM_ERROR_NG;
     }
-    fprintf(fp, "%d\n", image->max_brightness);
+    fprintf(fp, "%d\n", header->max_brightness);
   }
 
   /* フォーマット別の書き込みルーチンへ */
-  switch (image->format) {
-    case PNM_P1: write_err = PNM_WriteP1(fp, image); break;
-    case PNM_P2: write_err = PNM_WriteP2(fp, image); break;
-    case PNM_P3: write_err = PNM_WriteP3(fp, image); break;
-    case PNM_P4: write_err = PNM_WriteP4(fp, image); break;
-    case PNM_P5: write_err = PNM_WriteP5(fp, image); break;
-    case PNM_P6: write_err = PNM_WriteP6(fp, image); break;
+  switch (header->format) {
+    case PNM_P1: write_err = PNM_WriteP1(fp, picture); break;
+    case PNM_P2: write_err = PNM_WriteP2(fp, picture); break;
+    case PNM_P3: write_err = PNM_WriteP3(fp, picture); break;
+    case PNM_P4: write_err = PNM_WriteP4(fp, picture); break;
+    case PNM_P5: write_err = PNM_WriteP5(fp, picture); break;
+    case PNM_P6: write_err = PNM_WriteP6(fp, picture); break;
     default:
-      fprintf(stderr, "Image data write error. \n");
+      fprintf(stderr, "Picture data write error. \n");
       return PNM_ERROR_NG;
   }
 
@@ -273,8 +274,7 @@ static PNMError PNM_Write(FILE* fp, const struct PNMImage* image)
 
 /* ファイルヘッダ読み込み */
 static PNMError PNMParser_ReadHeader(struct PNMParser* parser, 
-    PNMFormat *format, int32_t *width, int32_t *height, 
-    int32_t *max_brightness)
+    struct PNMHeader* header)
 {
   char          header_token[PNMPARSER_MAX_NUMBER_OF_DIGHTS];
   uint8_t       format_int;
@@ -331,85 +331,85 @@ static PNMError PNMParser_ReadHeader(struct PNMParser* parser,
   }
 
   /* 出力に反映 */
-  *format         = format_tmp;
-  *width          = width_tmp;
-  *height         = height_tmp;
-  *max_brightness = max_tmp;
+  header->format         = format_tmp;
+  header->width          = width_tmp;
+  header->height         = height_tmp;
+  header->max_brightness = max_tmp;
 
   return PNM_ERROR_OK;
 }
 
 /* 画像の領域割り当て */
-static struct PNMImage* PNM_AllocateImage(int32_t width, int32_t height)
+struct PNMPicture* PNM_CreatePicture(uint32_t width, uint32_t height)
 {
-  struct PNMImage  *pnm;
-  PNMPixel  **img;
-  int32_t y;
+  struct PNMPicture  *pnm;
+  PNMPixel  **picture;
+  uint32_t y;
 
   if (width <= 0 || height <= 0) {
     return NULL;
   }
 
   /* PNMイメージの割り当て */
-  pnm = (struct PNMImage *)malloc(sizeof(struct PNMImage));
+  pnm = (struct PNMPicture *)malloc(sizeof(struct PNMPicture));
   if (pnm == NULL) {
     return NULL;
   }
-  pnm->width  = width;
-  pnm->height = height;
+  pnm->header.width  = width;
+  pnm->header.height = height;
 
   /* 画素領域の割り当て */
-  img = (PNMPixel **)malloc(sizeof(PNMPixel*) * height);
-  if (img == NULL) {
+  picture = (PNMPixel **)malloc(sizeof(PNMPixel*) * height);
+  if (picture == NULL) {
     return NULL;
   }
   for (y = 0; y < height; y++) {
     /* 0クリアで割り当てておく */
-    img[y] = (PNMPixel *)calloc(width, sizeof(PNMPixel));
-    if (img[y] == NULL) {
+    picture[y] = (PNMPixel *)calloc(width, sizeof(PNMPixel));
+    if (picture[y] == NULL) {
       return NULL;
     }
   }
 
-  pnm->img = img;
+  pnm->picture = picture;
   return pnm;
 }
 
 /* 画像の領域解放 */
-void PNM_FreeImage(struct PNMImage* image)
+void PNM_DestroyPicture(struct PNMPicture* picture)
 {
   uint32_t y;
 
-  if (image == NULL) {
+  if (picture == NULL) {
     return;
   }
 
-  for (y = 0; y < image->height; y++) {
-    free(image->img[y]);
+  for (y = 0; y < picture->header.height; y++) {
+    free(picture->picture[y]);
   }
 
-  free(image->img);
-  free(image);
+  free(picture->picture);
+  free(picture);
 }
 
 /* P1フォーマットファイルの読み込み */
-static PNMError PNMParser_ReadP1(struct PNMParser* parser, struct PNMImage* image)
+static PNMError PNMParser_ReadP1(struct PNMParser* parser, struct PNMPicture* picture)
 {
   int32_t   ch;
   uint32_t  x, y;
 
-  if (parser == NULL || image == NULL) {
+  if (parser == NULL || picture == NULL) {
     return PNM_ERROR_INVALID_PARAMETER;
   }
 
-  for (y = 0; y < image->height; y++) {
-    for (x = 0; x < image->width; x++) {
+  for (y = 0; y < picture->header.height; y++) {
+    for (x = 0; x < picture->header.width; x++) {
       /* 空白の読み飛ばし */
       while (isspace(ch = PNMParser_GetNextCharacter(parser))) ;
       if (ch == '0') {
-        image->img[y][x].b = 0;
+        picture->picture[y][x].b = 0;
       } else if (ch == '1') {
-        image->img[y][x].b = 1;
+        picture->picture[y][x].b = 1;
       } else {
         return PNM_ERROR_NG;
       }
@@ -420,20 +420,20 @@ static PNMError PNMParser_ReadP1(struct PNMParser* parser, struct PNMImage* imag
 }
 
 /* P2フォーマットファイルの読み込み */
-static PNMError PNMParser_ReadP2(struct PNMParser* parser, struct PNMImage* image)
+static PNMError PNMParser_ReadP2(struct PNMParser* parser, struct PNMPicture* picture)
 {
   int32_t   tmp;
   uint32_t  x, y;
 
-  if (parser == NULL || image == NULL) {
+  if (parser == NULL || picture == NULL) {
     return PNM_ERROR_INVALID_PARAMETER;
   }
 
-  for (y = 0; y < image->height; y++) {
-    for (x = 0; x < image->width; x++) {
+  for (y = 0; y < picture->header.height; y++) {
+    for (x = 0; x < picture->header.width; x++) {
       tmp = PNMParser_GetNextInteger(parser);
       if (tmp < 0) { return PNM_ERROR_NG; }
-      image->img[y][x].g = tmp;
+      picture->picture[y][x].g = tmp;
     }
   }
 
@@ -441,28 +441,28 @@ static PNMError PNMParser_ReadP2(struct PNMParser* parser, struct PNMImage* imag
 }
 
 /* P3フォーマットファイルの読み込み */
-static PNMError PNMParser_ReadP3(struct PNMParser* parser, struct PNMImage* image)
+static PNMError PNMParser_ReadP3(struct PNMParser* parser, struct PNMPicture* picture)
 {
   int32_t   tmp;
   uint32_t  x, y;
 
-  if (parser == NULL || image == NULL) {
+  if (parser == NULL || picture == NULL) {
     return PNM_ERROR_INVALID_PARAMETER;
   }
 
-  for (y = 0; y < image->height; y++) {
-    for (x = 0; x < image->width; x++) {
+  for (y = 0; y < picture->header.height; y++) {
+    for (x = 0; x < picture->header.width; x++) {
       tmp = PNMParser_GetNextInteger(parser);
       if (tmp < 0) { return PNM_ERROR_NG; }
-      image->img[y][x].c.r = tmp;
+      picture->picture[y][x].c.r = tmp;
 
       tmp = PNMParser_GetNextInteger(parser);
       if (tmp < 0) { return PNM_ERROR_NG; }
-      image->img[y][x].c.g = tmp;
+      picture->picture[y][x].c.g = tmp;
 
       tmp = PNMParser_GetNextInteger(parser);
       if (tmp < 0) { return PNM_ERROR_NG; }
-      image->img[y][x].c.b = tmp;
+      picture->picture[y][x].c.b = tmp;
     }
   }
 
@@ -470,20 +470,20 @@ static PNMError PNMParser_ReadP3(struct PNMParser* parser, struct PNMImage* imag
 }
 
 /* P4フォーマットファイルの読み込み */
-static PNMError PNMParser_ReadP4(struct PNMParser* parser, struct PNMImage* image)
+static PNMError PNMParser_ReadP4(struct PNMParser* parser, struct PNMPicture* picture)
 {
   int32_t   tmp;
   uint32_t  x, y;
 
-  if (parser == NULL || image == NULL) {
+  if (parser == NULL || picture == NULL) {
     return PNM_ERROR_INVALID_PARAMETER;
   }
 
-  for (y = 0; y < image->height; y++) {
-    for (x = 0; x < image->width; x++) {
+  for (y = 0; y < picture->header.height; y++) {
+    for (x = 0; x < picture->header.width; x++) {
       tmp = PNMParser_GetBits(parser, 1);
       if (tmp < 0) {  return PNM_ERROR_IO; }
-      PNMImg_BIT(image, x, y) = tmp;
+      PNMPict_BIT(picture, x, y) = tmp;
     }
     /* HACK:ストライドはバイト単位になるため、
      * 横方向の末端ビットは0が埋まっている. 
@@ -495,20 +495,20 @@ static PNMError PNMParser_ReadP4(struct PNMParser* parser, struct PNMImage* imag
 }
 
 /* P5フォーマットファイルの読み込み */
-static PNMError PNMParser_ReadP5(struct PNMParser* parser, struct PNMImage* image)
+static PNMError PNMParser_ReadP5(struct PNMParser* parser, struct PNMPicture* picture)
 {
   int32_t   tmp;
   uint32_t  x, y;
 
-  if (parser == NULL || image == NULL) {
+  if (parser == NULL || picture == NULL) {
     return PNM_ERROR_INVALID_PARAMETER;
   }
 
-  for (y = 0; y < image->height; y++) {
-    for (x = 0; x < image->width; x++) {
+  for (y = 0; y < picture->header.height; y++) {
+    for (x = 0; x < picture->header.width; x++) {
       tmp = PNMParser_GetBits(parser, 8);
       if (tmp < 0) { return PNM_ERROR_IO; }
-      PNMImg_GRAY(image, x, y) = tmp;
+      PNMPict_GRAY(picture, x, y) = tmp;
     }
   }
 
@@ -516,26 +516,26 @@ static PNMError PNMParser_ReadP5(struct PNMParser* parser, struct PNMImage* imag
 }
 
 /* P6フォーマットファイルの読み込み */
-static PNMError PNMParser_ReadP6(struct PNMParser* parser, struct PNMImage* image)
+static PNMError PNMParser_ReadP6(struct PNMParser* parser, struct PNMPicture* picture)
 {
   int32_t   tmp;
   uint32_t  x, y;
 
-  if (parser == NULL || image == NULL) {
+  if (parser == NULL || picture == NULL) {
     return PNM_ERROR_INVALID_PARAMETER;
   }
 
-  for (y = 0; y < image->height; y++) {
-    for (x = 0; x < image->width; x++) {
+  for (y = 0; y < picture->header.height; y++) {
+    for (x = 0; x < picture->header.width; x++) {
       tmp = PNMParser_GetBits(parser, 8);
       if (tmp < 0) { return PNM_ERROR_IO; }
-      PNMImg_R(image, x, y) = tmp;
+      PNMPict_R(picture, x, y) = tmp;
       tmp = PNMParser_GetBits(parser, 8);
       if (tmp < 0) { return PNM_ERROR_IO; }
-      PNMImg_G(image, x, y) = tmp;
+      PNMPict_G(picture, x, y) = tmp;
       tmp = PNMParser_GetBits(parser, 8);
       if (tmp < 0) { return PNM_ERROR_IO; }
-      PNMImg_B(image, x, y) = tmp;
+      PNMPict_B(picture, x, y) = tmp;
     }
   }
 
@@ -543,14 +543,18 @@ static PNMError PNMParser_ReadP6(struct PNMParser* parser, struct PNMImage* imag
 }
 
 /* P1フォーマットファイルの書き込み */
-static PNMError PNM_WriteP1(FILE* fp, const struct PNMImage* image)
+static PNMError PNM_WriteP1(FILE* fp, const struct PNMPicture* picture)
 {
   uint32_t x, y;
   int32_t bit;
 
-  for (y = 0; y < image->height; y++) {
-    for (x = 0; x < image->width; x++) {
-      bit = PNMImg_BIT(image, x, y);
+  if (fp == NULL || picture == NULL) {
+    return PNM_ERROR_INVALID_PARAMETER;
+  }
+
+  for (y = 0; y < picture->header.height; y++) {
+    for (x = 0; x < picture->header.width; x++) {
+      bit = PNMPict_BIT(picture, x, y);
       if (bit != 0 && bit != 1) { 
         return PNM_ERROR_NG;
       }
@@ -563,15 +567,19 @@ static PNMError PNM_WriteP1(FILE* fp, const struct PNMImage* image)
 }
 
 /* P2フォーマットファイルの書き込み */
-static PNMError PNM_WriteP2(FILE* fp, const struct PNMImage* image)
+static PNMError PNM_WriteP2(FILE* fp, const struct PNMPicture* picture)
 {
   uint32_t x, y;
   uint32_t gray;
 
-  for (y = 0; y < image->height; y++) {
-    for (x = 0; x < image->width; x++) {
-      gray = PNMImg_GRAY(image, x, y);
-      if (gray > image->max_brightness) { 
+  if (fp == NULL || picture == NULL) {
+    return PNM_ERROR_INVALID_PARAMETER;
+  }
+
+  for (y = 0; y < picture->header.height; y++) {
+    for (x = 0; x < picture->header.width; x++) {
+      gray = PNMPict_GRAY(picture, x, y);
+      if (gray > picture->header.max_brightness) { 
         return PNM_ERROR_NG;
       }
       fprintf(fp, "%d ", gray);
@@ -583,19 +591,23 @@ static PNMError PNM_WriteP2(FILE* fp, const struct PNMImage* image)
 }
 
 /* P3フォーマットファイルの書き込み */
-static PNMError PNM_WriteP3(FILE* fp, const struct PNMImage* image)
+static PNMError PNM_WriteP3(FILE* fp, const struct PNMPicture* picture)
 {
   uint32_t x, y;
   uint32_t r, g, b;
 
-  for (y = 0; y < image->height; y++) {
-    for (x = 0; x < image->width; x++) {
-      r = PNMImg_R(image, x, y);
-      g = PNMImg_G(image, x, y);
-      b = PNMImg_B(image, x, y);
-      if (r > image->max_brightness
-          || g > image->max_brightness
-          || b > image->max_brightness) {
+  if (fp == NULL || picture == NULL) {
+    return PNM_ERROR_INVALID_PARAMETER;
+  }
+
+  for (y = 0; y < picture->header.height; y++) {
+    for (x = 0; x < picture->header.width; x++) {
+      r = PNMPict_R(picture, x, y);
+      g = PNMPict_G(picture, x, y);
+      b = PNMPict_B(picture, x, y);
+      if (r > picture->header.max_brightness
+          || g > picture->header.max_brightness
+          || b > picture->header.max_brightness) {
         return PNM_ERROR_NG;
       }
       fprintf(fp, "%d %d %d ", r, g, b);
@@ -607,18 +619,22 @@ static PNMError PNM_WriteP3(FILE* fp, const struct PNMImage* image)
 }
 
 /* P4フォーマットファイルの書き込み */
-static PNMError PNM_WriteP4(FILE* fp, const struct PNMImage* image)
+static PNMError PNM_WriteP4(FILE* fp, const struct PNMPicture* picture)
 {
   uint32_t x, y;
   uint32_t bit;
   struct PNMBitWriter writer;
 
+  if (fp == NULL || picture == NULL) {
+    return PNM_ERROR_INVALID_PARAMETER;
+  }
+
   /* ビットライタ初期化 */
   PNMBitWriter_Initialize(&writer, fp);
 
-  for (y = 0; y < image->height; y++) {
-    for (x = 0; x < image->width; x++) {
-      bit = PNMImg_BIT(image, x, y);
+  for (y = 0; y < picture->header.height; y++) {
+    for (x = 0; x < picture->header.width; x++) {
+      bit = PNMPict_BIT(picture, x, y);
       if (bit != 0 && bit != 1) { 
         return PNM_ERROR_NG;
       }
@@ -635,19 +651,23 @@ static PNMError PNM_WriteP4(FILE* fp, const struct PNMImage* image)
 }
 
 /* P5フォーマットファイルの書き込み */
-static PNMError PNM_WriteP5(FILE* fp, const struct PNMImage* image)
+static PNMError PNM_WriteP5(FILE* fp, const struct PNMPicture* picture)
 {
   uint32_t x, y;
   uint32_t gray;
   struct PNMBitWriter writer;
 
+  if (fp == NULL || picture == NULL) {
+    return PNM_ERROR_INVALID_PARAMETER;
+  }
+
   /* ビットライタ初期化 */
   PNMBitWriter_Initialize(&writer, fp);
 
-  for (y = 0; y < image->height; y++) {
-    for (x = 0; x < image->width; x++) {
-      gray = PNMImg_GRAY(image, x, y);
-      if (gray > image->max_brightness) { 
+  for (y = 0; y < picture->header.height; y++) {
+    for (x = 0; x < picture->header.width; x++) {
+      gray = PNMPict_GRAY(picture, x, y);
+      if (gray > picture->header.max_brightness) { 
         return PNM_ERROR_NG;
       }
       if (PNMBitWriter_PutBits(&writer, gray, 8) != PNM_ERROR_OK) {
@@ -660,23 +680,27 @@ static PNMError PNM_WriteP5(FILE* fp, const struct PNMImage* image)
 }
 
 /* P6フォーマットファイルの書き込み */
-static PNMError PNM_WriteP6(FILE* fp, const struct PNMImage* image)
+static PNMError PNM_WriteP6(FILE* fp, const struct PNMPicture* picture)
 {
   uint32_t x, y;
   uint32_t r, g, b;
   struct PNMBitWriter writer;
 
+  if (fp == NULL || picture == NULL) {
+    return PNM_ERROR_INVALID_PARAMETER;
+  }
+
   /* ビットライタ初期化 */
   PNMBitWriter_Initialize(&writer, fp);
 
-  for (y = 0; y < image->height; y++) {
-    for (x = 0; x < image->width; x++) {
-      r = PNMImg_R(image, x, y);
-      g = PNMImg_G(image, x, y);
-      b = PNMImg_B(image, x, y);
-      if (r > image->max_brightness
-          || g > image->max_brightness
-          || b > image->max_brightness) {
+  for (y = 0; y < picture->header.height; y++) {
+    for (x = 0; x < picture->header.width; x++) {
+      r = PNMPict_R(picture, x, y);
+      g = PNMPict_G(picture, x, y);
+      b = PNMPict_B(picture, x, y);
+      if (r > picture->header.max_brightness
+          || g > picture->header.max_brightness
+          || b > picture->header.max_brightness) {
         return PNM_ERROR_NG;
       }
       if ((PNMBitWriter_PutBits(&writer, r, 8) != PNM_ERROR_OK)
