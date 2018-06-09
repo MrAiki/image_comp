@@ -18,7 +18,7 @@ int main(int argc, char** argv)
   }
 
   /* 何かする */
-  if (picture->header.format == PNM_P5) {
+  if (picture->header.format == PNM_FORMAT_P5) {
     int32_t i;
     uint32_t *hori_diff = (uint32_t *)calloc(sizeof(uint32_t), 512);
     uint32_t *vert_diff = (uint32_t *)calloc(sizeof(uint32_t), 512);

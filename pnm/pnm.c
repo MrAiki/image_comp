@@ -181,24 +181,24 @@ static struct PNMPicture* PNM_CreatePictureFromFilePointer(FILE* fp)
 
   /* タイプに合わせて画素値を取得 */
   switch (header.format) {
-    case PNM_P1:
+    case PNM_FORMAT_P1:
       read_err = PNMParser_ReadP1(&parser, pnm);
       break;
-    case PNM_P2:
+    case PNM_FORMAT_P2:
       read_err = PNMParser_ReadP2(&parser, pnm);
       break;
-    case PNM_P3:
+    case PNM_FORMAT_P3:
       read_err = PNMParser_ReadP3(&parser, pnm);
       break;
-    case PNM_P4:
+    case PNM_FORMAT_P4:
       PNMParser_InitializeForBinary(&parser, parser.fp);
       read_err = PNMParser_ReadP4(&parser, pnm);
       break;
-    case PNM_P5:
+    case PNM_FORMAT_P5:
       PNMParser_InitializeForBinary(&parser, parser.fp);
       read_err = PNMParser_ReadP5(&parser, pnm);
       break;
-    case PNM_P6:
+    case PNM_FORMAT_P6:
       PNMParser_InitializeForBinary(&parser, parser.fp);
       read_err = PNMParser_ReadP6(&parser, pnm);
       break;
@@ -228,12 +228,12 @@ static PNMError PNM_WritePictureToFilePointer(FILE* fp, const struct PNMPicture*
 
   /* フォーマット文字列の書き込み */
   switch (header->format) {
-    case PNM_P1: fputs("P1\n", fp); break;
-    case PNM_P2: fputs("P2\n", fp); break;
-    case PNM_P3: fputs("P3\n", fp); break;
-    case PNM_P4: fputs("P4\n", fp); break;
-    case PNM_P5: fputs("P5\n", fp); break;
-    case PNM_P6: fputs("P6\n", fp); break;
+    case PNM_FORMAT_P1: fputs("P1\n", fp); break;
+    case PNM_FORMAT_P2: fputs("P2\n", fp); break;
+    case PNM_FORMAT_P3: fputs("P3\n", fp); break;
+    case PNM_FORMAT_P4: fputs("P4\n", fp); break;
+    case PNM_FORMAT_P5: fputs("P5\n", fp); break;
+    case PNM_FORMAT_P6: fputs("P6\n", fp); break;
     default:
       fprintf(stderr, "Invalid format. \n");
       return PNM_ERROR_NG;
@@ -243,7 +243,7 @@ static PNMError PNM_WritePictureToFilePointer(FILE* fp, const struct PNMPicture*
   fprintf(fp, "%d %d\n", header->width, header->height);
 
   /* P1,P4以外では最大輝度値を書き込む */
-  if (header->format != PNM_P1 && header->format != PNM_P4) {
+  if (header->format != PNM_FORMAT_P1 && header->format != PNM_FORMAT_P4) {
     if (header->max_brightness > 255) {
       fprintf(stderr, "Unsupported max brightness(%d) \n",
           header->max_brightness);
@@ -254,12 +254,12 @@ static PNMError PNM_WritePictureToFilePointer(FILE* fp, const struct PNMPicture*
 
   /* フォーマット別の書き込みルーチンへ */
   switch (header->format) {
-    case PNM_P1: write_err = PNM_WriteP1(fp, picture); break;
-    case PNM_P2: write_err = PNM_WriteP2(fp, picture); break;
-    case PNM_P3: write_err = PNM_WriteP3(fp, picture); break;
-    case PNM_P4: write_err = PNM_WriteP4(fp, picture); break;
-    case PNM_P5: write_err = PNM_WriteP5(fp, picture); break;
-    case PNM_P6: write_err = PNM_WriteP6(fp, picture); break;
+    case PNM_FORMAT_P1: write_err = PNM_WriteP1(fp, picture); break;
+    case PNM_FORMAT_P2: write_err = PNM_WriteP2(fp, picture); break;
+    case PNM_FORMAT_P3: write_err = PNM_WriteP3(fp, picture); break;
+    case PNM_FORMAT_P4: write_err = PNM_WriteP4(fp, picture); break;
+    case PNM_FORMAT_P5: write_err = PNM_WriteP5(fp, picture); break;
+    case PNM_FORMAT_P6: write_err = PNM_WriteP6(fp, picture); break;
     default:
       fprintf(stderr, "Picture data write error. \n");
       return PNM_ERROR_NG;
@@ -296,12 +296,12 @@ static PNMError PNMParser_ReadHeader(struct PNMParser* parser,
 
   /* 列挙型に変換 */
   switch (format_int) {
-    case 1: format_tmp = PNM_P1; break;
-    case 2: format_tmp = PNM_P2; break;
-    case 3: format_tmp = PNM_P3; break;
-    case 4: format_tmp = PNM_P4; break;
-    case 5: format_tmp = PNM_P5; break;
-    case 6: format_tmp = PNM_P6; break;
+    case 1: format_tmp = PNM_FORMAT_P1; break;
+    case 2: format_tmp = PNM_FORMAT_P2; break;
+    case 3: format_tmp = PNM_FORMAT_P3; break;
+    case 4: format_tmp = PNM_FORMAT_P4; break;
+    case 5: format_tmp = PNM_FORMAT_P5; break;
+    case 6: format_tmp = PNM_FORMAT_P6; break;
     default:
             fprintf(stderr, "Invalid PNM format. \n");
             return PNM_ERROR_NG;
@@ -316,7 +316,7 @@ static PNMError PNMParser_ReadHeader(struct PNMParser* parser,
   }
 
   /* 輝度の最大値を取得 */
-  if (format_tmp != PNM_P1 && format_tmp != PNM_P4) {
+  if (format_tmp != PNM_FORMAT_P1 && format_tmp != PNM_FORMAT_P4) {
     max_tmp = PNMParser_GetNextInteger(parser);
     if (max_tmp < 0) {
       fprintf(stderr, "Invalid max brightness(%d). \n", max_tmp);

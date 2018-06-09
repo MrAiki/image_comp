@@ -252,7 +252,7 @@ void testPNMParser_ReadHeaderTest(void *obj)
     const char* test_filename = "./data/for_test_header.bin";
     const char* format_strs[] = {"P1", "P2", "P3", "P4", "P5", "P6"};
     const PNMFormat format_ans[]
-      = {PNM_P1, PNM_P2, PNM_P3, PNM_P4, PNM_P5, PNM_P6};
+      = {PNM_FORMAT_P1, PNM_FORMAT_P2, PNM_FORMAT_P3, PNM_FORMAT_P4, PNM_FORMAT_P5, PNM_FORMAT_P6};
     const int32_t test_width = 200;
     const int32_t test_height = 100;
     const int32_t test_max_brightness = 180;
@@ -267,8 +267,8 @@ void testPNMParser_ReadHeaderTest(void *obj)
 
       /* ヘッダ書き出し */
       fp = fopen(test_filename, "wb");
-      if (format_ans[i_test] == PNM_P1
-          || format_ans[i_test] == PNM_P4) {
+      if (format_ans[i_test] == PNM_FORMAT_P1
+          || format_ans[i_test] == PNM_FORMAT_P4) {
         fprintf(fp, "%s \n# Aikatsu!Aikatsu!\n%d %d",
             format_strs[i_test], 
             test_width, test_height);
@@ -288,8 +288,8 @@ void testPNMParser_ReadHeaderTest(void *obj)
       Test_AssertEqual(header.width,  test_width);
       Test_AssertEqual(header.height, test_height);
 
-      if (format_ans[i_test] != PNM_P1
-          && format_ans[i_test] != PNM_P4) {
+      if (format_ans[i_test] != PNM_FORMAT_P1
+          && format_ans[i_test] != PNM_FORMAT_P4) {
         Test_AssertEqual(header.max_brightness, test_max_brightness);
       }
       fclose(fp);
@@ -656,7 +656,7 @@ void testPNMParser_ReadPNMPictureTest(void *obj)
       "./data/JPEG_bin.ppm",
     };
     const PNMFormat format_answer[] = {
-      PNM_P1, PNM_P2, PNM_P3, PNM_P4, PNM_P5, PNM_P6
+      PNM_FORMAT_P1, PNM_FORMAT_P2, PNM_FORMAT_P3, PNM_FORMAT_P4, PNM_FORMAT_P5, PNM_FORMAT_P6
     };
     const uint8_t* imgdata_answers[] = {
       JPEG_ascii_pbm_answer,
@@ -680,8 +680,8 @@ void testPNMParser_ReadPNMPictureTest(void *obj)
 
       /* 内容確認 */
       is_ok = 1;
-      if (format_answer[i_test] == PNM_P1
-          || format_answer[i_test] == PNM_P4) {
+      if (format_answer[i_test] == PNM_FORMAT_P1
+          || format_answer[i_test] == PNM_FORMAT_P4) {
         for (y = 0; y < image->header.height; y++) {
           for (x = 0; x < image->header.width; x++) {
             imginx = y * image->header.width + x;
@@ -691,8 +691,8 @@ void testPNMParser_ReadPNMPictureTest(void *obj)
             }
           }
         }
-      } else if (format_answer[i_test] == PNM_P2
-          || format_answer[i_test] == PNM_P5) {
+      } else if (format_answer[i_test] == PNM_FORMAT_P2
+          || format_answer[i_test] == PNM_FORMAT_P5) {
         for (y = 0; y < image->header.height; y++) {
           for (x = 0; x < image->header.width; x++) {
             imginx = y * image->header.width + x;
@@ -702,8 +702,8 @@ void testPNMParser_ReadPNMPictureTest(void *obj)
             }
           }
         }
-      } else if (format_answer[i_test] == PNM_P3
-          || format_answer[i_test] == PNM_P6) {
+      } else if (format_answer[i_test] == PNM_FORMAT_P3
+          || format_answer[i_test] == PNM_FORMAT_P6) {
         for (y = 0; y < image->header.height; y++) {
           for (x = 0; x < image->header.width; x++) {
             imginx = 3 * (y * image->header.width + x);
@@ -797,7 +797,7 @@ void testPNMBitWriter_WritePNMPictureTest(void *obj)
       "./data/for_test_write_p1.pbm",
       "./data/for_test_write_p4.pbm",
     };
-    const PNMFormat   formats[] = { PNM_P1, PNM_P4 };
+    const PNMFormat   formats[] = { PNM_FORMAT_P1, PNM_FORMAT_P4 };
     uint32_t          answer[TESTWIDTH][TESTHEIGHT];
     uint32_t          x, y, i_test;
     int32_t           is_ok;
@@ -851,7 +851,7 @@ CHECK_END_P1P4:
       "./data/for_test_write_p2.pgm",
       "./data/for_test_write_p5.pgm",
     };
-    const PNMFormat   formats[] = { PNM_P2, PNM_P5 };
+    const PNMFormat   formats[] = { PNM_FORMAT_P2, PNM_FORMAT_P5 };
     uint32_t          answer[TESTWIDTH][TESTHEIGHT];
     uint32_t          x, y, i_test;
     int32_t           is_ok;
@@ -905,7 +905,7 @@ CHECK_END_P2P5:
       "./data/for_test_write_p3.ppm",
       "./data/for_test_write_p6.ppm",
     };
-    const PNMFormat   formats[] = { PNM_P3, PNM_P6 };
+    const PNMFormat   formats[] = { PNM_FORMAT_P3, PNM_FORMAT_P6 };
     uint32_t          answer[TESTWIDTH][TESTHEIGHT][3];
     uint32_t          x, y, i_test;
     int32_t           is_ok;
@@ -991,7 +991,7 @@ void testPNMBitWriter_ReadWritePNMPictureTest(void *obj)
       Test_AssertEqual(image->header.format, test->header.format);
       Test_AssertEqual(image->header.width,  test->header.width);
       Test_AssertEqual(image->header.height, test->header.height);
-      if (image->header.format != PNM_P1 && image->header.format != PNM_P4) {
+      if (image->header.format != PNM_FORMAT_P1 && image->header.format != PNM_FORMAT_P4) {
         Test_AssertEqual(image->header.max_brightness, test->header.max_brightness);
       }
 

@@ -5,12 +5,12 @@
 
 /* PNM画像フォーマット */
 typedef enum PNMFormatTag {
-  PNM_P1,       /* 2値 テキスト(.pbm) */
-  PNM_P2,       /* グレースケール テキスト(.pgm) */
-  PNM_P3,       /* RGBカラー テキスト(.ppm) */
-  PNM_P4,       /* 2値 バイナリ(.pbm) */
-  PNM_P5,       /* グレースケール バイナリ(.pgm) */
-  PNM_P6,       /* RGBカラー バイナリ(.ppm) */
+  PNM_FORMAT_P1,       /* 2値 テキスト(.pbm) */
+  PNM_FORMAT_P2,       /* グレースケール テキスト(.pgm) */
+  PNM_FORMAT_P3,       /* RGBカラー テキスト(.ppm) */
+  PNM_FORMAT_P4,       /* 2値 バイナリ(.pbm) */
+  PNM_FORMAT_P5,       /* グレースケール バイナリ(.pgm) */
+  PNM_FORMAT_P6,       /* RGBカラー バイナリ(.ppm) */
 } PNMFormat;
 
 /* RGBカラー */
