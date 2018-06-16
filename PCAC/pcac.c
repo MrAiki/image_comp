@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <float.h>
 #include <assert.h>
+#include <string.h>
 
 /* for logoutput */
 #include <stdio.h>
@@ -12,16 +13,6 @@
 /* Jacobi法の収束判定値 */
 #define CONVERGENCE_MARGIN       (1e-10)
 
-/* 幅（水平方向）に存在するブロック数を計算 */
-#define NUM_BLOCKS_IN_WIDTH(pnm, block_size) \
-  (((pnm->header.width) + (block_size) - 1) / (block_size))
-/* 高さ（垂直方向）に存在するブロック数を計算 */
-#define NUM_BLOCKS_IN_HEIGHT(pnm, block_size) \
-  (((pnm->header.height) + (block_size) - 1) / (block_size))
-/* 画像内のブロック数を計算 */
-#define NUM_BLOCKS_IN_PICTURE(pnm, block_size) \
-  (NUM_BLOCKS_IN_WIDTH(pnm, block_size) * NUM_BLOCKS_IN_HEIGHT(pnm, block_size))
-
 /* 縦横block_sizeのサイズでブロック分割した画像内の座標にアクセスする */
 static uint32_t PCAC_PictureBlockIndexAt(const struct PNMPicture* picture, uint32_t block_size, uint32_t block_x, uint32_t block_y, uint32_t x, uint32_t y);
 
@@ -29,7 +20,11 @@ static uint32_t PCAC_PictureBlockIndexAt(const struct PNMPicture* picture, uint3
 static float PCAC_CalculateAverageBlockIndexAt(const struct PNMPicture* picture, uint32_t block_size, uint32_t x, uint32_t y);
 
 /* ブロック分割した画像内のi番目の座標とj番目の座標の積の平均を計算する */
-static float PCAC_CalculateMulAverageBlockIndexAt(const struct PNMPicture* picture, uint32_t block_size, uint32_t x_i, uint32_t y_i, uint32_t x_j, uint32_t y_j);
+static float PCAC_CalculateMulAverageBlockIndexAt(const struct PNMPicture* picture,
+    uint32_t block_size, uint32_t x_i, uint32_t y_i, uint32_t x_j, uint32_t y_j);
+
+/* 固有ベクトルの正規化 */
+static void PCAC_NormalizeEigenVectors(float* eigenvectors, uint32_t dim);
 
 /* 対角要素に固有値が並んだ対角行列をもとに、固有値を降順で並び替える
  * 対応する固有ベクトル（列ベクトル）も並べ替える */
@@ -70,17 +65,18 @@ static float PCAC_CalculateAverageBlockIndexAt(const struct PNMPicture* picture,
   assert(picture != NULL);
 
   sum = 0.0f;
-  for (block_y = 0; block_y < NUM_BLOCKS_IN_HEIGHT(picture, block_size); block_y++) {
-    for (block_x = 0; block_x < NUM_BLOCKS_IN_WIDTH(picture, block_size); block_x++) {
+  for (block_y = 0; block_y < PCAC_NUM_BLOCKS_IN_HEIGHT(picture, block_size); block_y++) {
+    for (block_x = 0; block_x < PCAC_NUM_BLOCKS_IN_WIDTH(picture, block_size); block_x++) {
       sum += PCAC_PictureBlockIndexAt(picture, block_size, block_x, block_y, x, y);
     }
   }
 
-  return sum / NUM_BLOCKS_IN_PICTURE(picture, block_size);
+  return sum / PCAC_NUM_BLOCKS_IN_PICTURE(picture, block_size);
 }
 
 /* ブロック分割した画像内のi番目の座標とj番目の座標の積の平均を計算する */
-static float PCAC_CalculateMulAverageBlockIndexAt(const struct PNMPicture* picture, uint32_t block_size, uint32_t x_i, uint32_t y_i, uint32_t x_j, uint32_t y_j)
+static float PCAC_CalculateMulAverageBlockIndexAt(const struct PNMPicture* picture,
+    uint32_t block_size, uint32_t x_i, uint32_t y_i, uint32_t x_j, uint32_t y_j)
 {
   uint32_t block_x, block_y;
   float sum;
@@ -88,30 +84,26 @@ static float PCAC_CalculateMulAverageBlockIndexAt(const struct PNMPicture* pictu
   assert(picture != NULL);
 
   sum = 0.0f;
-  for (block_y = 0; block_y < NUM_BLOCKS_IN_HEIGHT(picture, block_size); block_y++) {
-    for (block_x = 0; block_x < NUM_BLOCKS_IN_WIDTH(picture, block_size); block_x++) {
+  for (block_y = 0; block_y < PCAC_NUM_BLOCKS_IN_HEIGHT(picture, block_size); block_y++) {
+    for (block_x = 0; block_x < PCAC_NUM_BLOCKS_IN_WIDTH(picture, block_size); block_x++) {
       sum += PCAC_PictureBlockIndexAt(picture, block_size, block_x, block_y, x_i, y_i) * PCAC_PictureBlockIndexAt(picture, block_size, block_x, block_y, x_j, y_j);
     }
   }
 
-  return sum / NUM_BLOCKS_IN_PICTURE(picture, block_size);
+  return sum / PCAC_NUM_BLOCKS_IN_PICTURE(picture, block_size);
 }
-
 
 /* 分散共分散行列の計算 */
 PCACApiResult PCAC_CalculateCovarianceMatrix(const struct PNMPicture* picture, float* varmatrix, uint32_t block_size)
 {
-  float* average;
   uint32_t x, y;
   uint32_t varmat_dim = block_size * block_size;
   uint32_t x_i, y_i, x_j, y_j;
+  float*   average = malloc(sizeof(float) * block_size * block_size);
 
   if (picture == NULL || varmatrix == NULL) {
     return PCAC_API_RESULT_NG;
   }
-
-  /* 平均計算結果ベクトルを割り当て */
-  average = alloca(sizeof(float) * block_size * block_size);
 
   /* 各要素の平均を計算 */
   for (y = 0; y < block_size; y++) {
@@ -132,10 +124,12 @@ PCACApiResult PCAC_CalculateCovarianceMatrix(const struct PNMPicture* picture, f
 
       PCAC_MATRIX_AT(varmatrix, varmat_dim, x, y)
         = PCAC_MATRIX_AT(varmatrix, varmat_dim, y, x)
-        = PCAC_CalculateMulAverageBlockIndexAt(picture, block_size, x_i, y_i, x_j, y_j) - PCAC_MATRIX_AT(average, block_size, x_i, y_i) * PCAC_MATRIX_AT(average, block_size, x_j, y_j);
-      
+        = PCAC_CalculateMulAverageBlockIndexAt(picture, block_size, x_i, y_i, x_j, y_j)
+          - PCAC_MATRIX_AT(average, block_size, x_i, y_i) * PCAC_MATRIX_AT(average, block_size, x_j, y_j);
     }
   }
+
+  free(average);
 
   return PCAC_API_RESULT_OK;
 }
@@ -238,9 +232,33 @@ PCACApiResult PCAC_CalculateEigenVector(float* matrix, float* eigenvectors, uint
     */
   }
 
+  /* 固有ベクトルのノルムを1に正規化 */
+  PCAC_NormalizeEigenVectors(eigenvectors, dim);
+
+  /* 固有値降順で並び替え */
   PCAC_SortEigenVectors(matrix, eigenvectors, dim);
 
   return PCAC_API_RESULT_OK;
+}
+
+/* 固有ベクトルの正規化 */
+static void PCAC_NormalizeEigenVectors(float* eigenvectors, uint32_t dim)
+{
+  uint32_t row, col;
+  float sum;
+
+  for (col = 0; col < dim; col++) {
+    /* 2乗ノルムを求める */
+    sum = 0.0f;
+    for (row = 0; row < dim; row++) {
+      sum += PCAC_MATRIX_AT(eigenvectors, dim, row, col) * PCAC_MATRIX_AT(eigenvectors, dim, row, col);
+    }
+    sum = sqrt(sum);
+    /* 2乗ノルムで割る */
+    for (row = 0; row < dim; row++) {
+      PCAC_MATRIX_AT(eigenvectors, dim, row, col) /= sum;
+    }
+  }
 }
 
 /* 対角要素に固有値が並んだ対角行列をもとに、固有値を降順で並び替える
@@ -279,7 +297,7 @@ PCACApiResult PCAC_CalculateTransformMatrix(const struct PNMPicture* picture, fl
 {
   PCACApiResult ret;
   uint32_t  varmat_dim    = block_size * block_size;
-  float*    eigenvectors  = alloca(sizeof(float) * varmat_dim * varmat_dim);
+  float*    eigenvectors  = malloc(sizeof(float) * varmat_dim * varmat_dim);
 
   /* 画像をブロック分割したときの共分散行列を計算 */
   ret = PCAC_CalculateCovarianceMatrix(picture, matrix, block_size);
@@ -293,22 +311,21 @@ PCACApiResult PCAC_CalculateTransformMatrix(const struct PNMPicture* picture, fl
     return PCAC_API_RESULT_NG;
   }
 
-  /* 固有値（=分散）を表示 */
+#if 0
   {
-    uint32_t i_eig, row;
+    uint32_t i_eig;
+    printf("EigenVec,");
     for (i_eig = 0; i_eig < varmat_dim; i_eig++) {
-      printf("EigenVal:%10.3f, EigenVector:\n", PCAC_MATRIX_AT(matrix, varmat_dim, i_eig, i_eig));
-      for (row = 0; row < varmat_dim; row++) {
-        printf(" %10.3e,", PCAC_MATRIX_AT(eigenvectors, varmat_dim, row, i_eig));
-      }
-      printf("\n");
+      printf(" %f,", PCAC_MATRIX_AT(matrix, varmat_dim, i_eig, i_eig));
     }
-
     printf("\n");
   }
+#endif
 
   /* 結果をコピー */
   memcpy(matrix, eigenvectors, sizeof(float) * varmat_dim * varmat_dim);
+
+  free(eigenvectors);
 
   return PCAC_API_RESULT_OK;
 }

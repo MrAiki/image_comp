@@ -6,6 +6,19 @@
 #include <stdint.h>
 #include "../pnm/pnm.h"
 
+/* 変換行列の次数と要素数をブロックサイズから決める */
+#define PCAC_CALC_TRANS_MAT_DIM(block_size) ((block_size) * (block_size))
+#define PCAC_CALC_TRANS_MAT_SIZE(block_size) (PCAC_CALC_TRANS_MAT_DIM(block_size) * PCAC_CALC_TRANS_MAT_DIM(block_size))
+/* 幅（水平方向）に存在するブロック数を計算 */
+#define PCAC_NUM_BLOCKS_IN_WIDTH(pnm, block_size) \
+  (((pnm->header.width) + (block_size) - 1) / (block_size))
+/* 高さ（垂直方向）に存在するブロック数を計算 */
+#define PCAC_NUM_BLOCKS_IN_HEIGHT(pnm, block_size) \
+  (((pnm->header.height) + (block_size) - 1) / (block_size))
+/* 画像内のブロック数を計算 */
+#define PCAC_NUM_BLOCKS_IN_PICTURE(pnm, block_size) \
+  (PCAC_NUM_BLOCKS_IN_WIDTH(pnm, block_size) * PCAC_NUM_BLOCKS_IN_HEIGHT(pnm, block_size))
+
 /* 行列アクセサ */
 #define PCAC_MATRIX_AT(matrix, width, i, j) (matrix)[(i) * (width) + (j)]
 
@@ -30,4 +43,4 @@ PCACApiResult PCAC_CalculateCovarianceMatrix(const struct PNMPicture* picture, f
 /* matrixの対角要素に固有値が降順でセットされ、eigenvectorsに対応する列ベクトルがセットされる */
 PCACApiResult PCAC_CalculateEigenVector(float* matrix, float* eigenvectors, uint32_t dim);
 
-#endif /* CRFPC_H_INCLUDED */
+#endif /* PCAC_H_INCLUDED */

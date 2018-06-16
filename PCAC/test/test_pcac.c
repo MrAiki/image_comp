@@ -40,10 +40,10 @@ void testPCAC_PictureBlockIndexAtTest(void *obj)
 
     is_ok = 1;
     for (block_x = 0;
-         block_x < NUM_BLOCKS_IN_WIDTH(pict, TEST_BLOCK_SIZE);
+         block_x < PCAC_NUM_BLOCKS_IN_WIDTH(pict, TEST_BLOCK_SIZE);
          block_x++) {
       for (block_y = 0;
-           block_y < NUM_BLOCKS_IN_HEIGHT(pict, TEST_BLOCK_SIZE);
+           block_y < PCAC_NUM_BLOCKS_IN_HEIGHT(pict, TEST_BLOCK_SIZE);
            block_y++) {
         for (x = 0; x < TEST_BLOCK_SIZE; x++) {
           for (y = 0; y < TEST_BLOCK_SIZE; y++) {
@@ -198,7 +198,7 @@ TEST_EXIT:
     const uint32_t TEST_BLOCK_SIZE  = 7;
     const uint32_t TEST_VARMAT_DIM  = TEST_BLOCK_SIZE * TEST_BLOCK_SIZE;
     int32_t is_ok;
-    float *varmatrix;
+    float *varmatrix; 
     struct PNMPicture* pict = PNM_CreatePicture(TEST_WIDTH, TEST_HEIGHT);
     pict->header.format     = PNM_FORMAT_P2;
     varmatrix = malloc(sizeof(float) * TEST_VARMAT_DIM * TEST_VARMAT_DIM);
