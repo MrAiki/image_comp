@@ -37,14 +37,17 @@ int main(void) {
   }
 
   // ラベル作成: サンプルの次の系列
-  for (cnt = 0; cnt < 249; cnt++) {
-    label[cnt * 3 + 0] = sample[(cnt + 1) * 3 + 0];
-    label[cnt * 3 + 1] = sample[(cnt + 1) * 3 + 1];
-    label[cnt * 3 + 2] = sample[(cnt + 1) * 3 + 2];
+  for (cnt = 0; cnt < 250; cnt++) {
+    if (cnt < 240-1) {
+      label[cnt * 3 + 0] = sample[(cnt+1) * 3 + 0];
+      label[cnt * 3 + 1] = sample[(cnt+1) * 3 + 1];
+      label[cnt * 3 + 2] = sample[(cnt+1) * 3 + 2];
+    } else {
+      label[cnt * 3 + 0] = label[(cnt-1) * 3 + 0];
+      label[cnt * 3 + 1] = label[(cnt-1) * 3 + 1];
+      label[cnt * 3 + 2] = label[(cnt-1) * 3 + 2];
+    }
   }
-  label[249 * 3 + 0] = label[0 * 3 + 0];
-  label[249 * 3 + 1] = label[0 * 3 + 1];
-  label[249 * 3 + 2] = label[0 * 3 + 2];
 
   /* 高橋治久教授のアドバイス:RNNのダイナミクス(中間層のニューロン数)は多いほど良い */
   SRNNPredictor srnn(3, 3, 100);
@@ -54,3 +57,4 @@ int main(void) {
   fclose( fp );
   return 0;
 }
+

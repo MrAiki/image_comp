@@ -282,18 +282,17 @@ float SRNNPredictor::learning(void)
           MATRIX_AT(sample_maxmin,2,i,0),
           MATRIX_AT(sample_maxmin,2,i,1));
     }
-    printf("%f %f %f \n", predict_signal[0], predict_signal[1], predict_signal[2]);
+    printf("%f %f %f \n",
+        predict_signal[0],
+        predict_signal[1],
+        predict_signal[2]);
     // printf("%f %f %f \n", mid_out_net[0], mid_out_net[1], mid_out_net[2]);
 
     // この時点での二乗誤差計算
     squareError = 0;
     // ラベルとの誤差
     for (int n = 0;n < dim_out_signal;n++) {
-      if (seq < len_seqence - 1) {
-        squareError += powf((out_signal[n] - MATRIX_AT(norm_label,dim_out_signal,seq,n)),2);
-      } else {
-        squareError += powf((out_signal[n] - MATRIX_AT(norm_label,dim_out_signal,0,n)),2);
-      }
+      squareError += powf((out_signal[n] - MATRIX_AT(norm_label,dim_out_signal,seq,n)),2);
     } 
     squareError /= dim_out_signal;
     // printf("%f \n", squareError);
