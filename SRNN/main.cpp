@@ -1,13 +1,14 @@
 #include <stdio.h>
 
 #include "SRNNPredictor.hpp"
+#include "../pnm/pnm.h"
 
 // SRNNのテストルーチン
-int main(void) {
+int main(void)
+{
   FILE* fp;
   const char* fname = "./testdata/testdata.csv";
-  char s[100];
-  int ret, n1, n2;
+  int ret;
   float f1, f2, f3;
 
   float* sample = new float[250 * 3];
@@ -22,7 +23,7 @@ int main(void) {
 
   fp = fopen( fname, "r" );
   if( fp == NULL ){
-    printf( "%sファイルが開けません¥n", fname );
+    printf( "%sファイルが開けません \n", fname );
     return -1;
   }
 

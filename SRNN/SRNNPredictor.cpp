@@ -83,10 +83,6 @@ float* SRNNPredictor::predict(float* input)
 {
   float *norm_input = new float[this->dim_in_signal];
   // 係数行列のサイズ
-  int row_in_mid = num_mid_neuron;
-  int col_in_mid = dim_in_signal + num_mid_neuron + 1;
-  int row_mid_out = dim_out_signal;
-  int col_mid_out = num_mid_neuron + 1;
 
   // 信号の正規化
   for (int n=0; n < dim_in_signal; n++) {
