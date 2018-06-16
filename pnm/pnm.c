@@ -322,7 +322,7 @@ static PNMError PNMParser_ReadHeader(struct PNMParser* parser,
       fprintf(stderr, "Invalid max brightness(%d). \n", max_tmp);
       return PNM_ERROR_NG;
     } else if (max_tmp > 255) {
-      /* 今は1bitより大きい輝度は対応していない */
+      /* 今は1byteより大きい輝度は対応していない */
       fprintf(stderr, "Unsupported max brightness(%d) \n", max_tmp);
       return PNM_ERROR_NG;
     }
@@ -667,7 +667,7 @@ static PNMError PNM_WriteP5(FILE* fp, const struct PNMPicture* picture)
   for (y = 0; y < picture->header.height; y++) {
     for (x = 0; x < picture->header.width; x++) {
       gray = PNMPict_GRAY(picture, x, y);
-      if (gray > picture->header.max_brightness) { 
+      if (gray > picture->header.max_brightness || gray > (1UL << 8)) { 
         return PNM_ERROR_NG;
       }
       if (PNMBitWriter_PutBits(&writer, gray, 8) != PNM_ERROR_OK) {
@@ -700,7 +700,8 @@ static PNMError PNM_WriteP6(FILE* fp, const struct PNMPicture* picture)
       b = PNMPict_B(picture, x, y);
       if (r > picture->header.max_brightness
           || g > picture->header.max_brightness
-          || b > picture->header.max_brightness) {
+          || b > picture->header.max_brightness
+          || r > (1UL << 8) || g > (1UL << 8) || b > (1UL << 8)) {
         return PNM_ERROR_NG;
       }
       if ((PNMBitWriter_PutBits(&writer, r, 8) != PNM_ERROR_OK)
