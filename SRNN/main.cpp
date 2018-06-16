@@ -11,6 +11,7 @@ int main(void) {
   float f1, f2, f3;
 
   float* sample = new float[250 * 3];
+  float* label  = new float[250 * 3];
   float* sample_maxmin = new float[3 * 2];
   sample_maxmin[0] = 20;
   sample_maxmin[1] = 0;
@@ -35,8 +36,19 @@ int main(void) {
     cnt++;
   }
 
+  // ラベル作成: サンプルの次の系列
+  for (cnt = 0; cnt < 249; cnt++) {
+    label[cnt * 3 + 0] = sample[(cnt + 1) * 3 + 0];
+    label[cnt * 3 + 1] = sample[(cnt + 1) * 3 + 1];
+    label[cnt * 3 + 2] = sample[(cnt + 1) * 3 + 2];
+  }
+  label[249 * 3 + 0] = label[0 * 3 + 0];
+  label[249 * 3 + 1] = label[0 * 3 + 1];
+  label[249 * 3 + 2] = label[0 * 3 + 2];
+
   /* 高橋治久教授のアドバイス:RNNのダイナミクス(中間層のニューロン数)は多いほど良い */
-  SRNNPredictor srnn(3, 3, 100, 240, sample, sample_maxmin);
+  SRNNPredictor srnn(3, 3, 100);
+  srnn.set_sample(sample, label, sample_maxmin, 240, 3, 3);
   srnn.learning();
 
   fclose( fp );

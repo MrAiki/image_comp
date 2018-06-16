@@ -11,23 +11,11 @@
  */
 SRNNPredictor::SRNNPredictor(int dim_in_signal, 
                              int dim_out_signal,
-                             int num_mid,
-                             int len_seq,
-                             float* sample,
-                             float* sample_maxmin)
+                             int num_mid)
 {
   this->dim_in_signal  = dim_in_signal;
   this->dim_out_signal = dim_out_signal;
-  this->len_seqence    = len_seq;
   this->num_mid_neuron = num_mid; // こいつが一番ネック.学習能力に関わる
-
-  // TODO:廃止予定
-  // sample/sample_maxminのアロケート
-  this->sample = new float[len_seqence * dim_in_signal];
-  this->sample_maxmin = new float[dim_in_signal * 2];
-
-  memcpy(this->sample, sample, sizeof(float) * len_seqence * dim_in_signal);
-  memcpy(this->sample_maxmin, sample_maxmin, sizeof(float) * dim_in_signal * 2);
 
   this->predict_signal = new float[dim_out_signal];
   
@@ -61,6 +49,33 @@ void SRNNPredictor::sigmoid_vec(float* net,
   for (int n = 0;n < dim;n++) {
     out[n] = sigmoid_func(net[n]); // sigmoid_funcはシグモイド関数の計算.
   }
+}
+
+int SRNNPredictor::set_sample(float* sample, float* label,
+    float* sample_maxmin, int len_seqence, int dim_sample, int dim_label)
+{
+  if (dim_sample != this->dim_in_signal) {
+    // fprintf("Sample dimention must be equal with SRNN predictor.\n");
+    return -1;
+  }
+  if (dim_label != this->dim_out_signal) {
+    // fprintf("Sample dimention must be equal with SRNN predictor.\n");
+    return -2;
+  }
+
+  this->len_seqence    = len_seqence;
+
+  // TODO:廃止予定
+  // sample/sample_maxminのアロケート
+  this->sample = new float[len_seqence * dim_sample];
+  this->sample_maxmin = new float[dim_sample * 2];
+  this->label = new float[len_seqence * dim_label];
+
+  memcpy(this->sample, sample, sizeof(float) * len_seqence * dim_in_signal);
+  memcpy(this->label,   label, sizeof(float) * len_seqence * dim_out_signal);
+  memcpy(this->sample_maxmin, sample_maxmin, sizeof(float) * dim_sample * 2);
+
+  return 0;
 }
 
 /* 予測: inputの次の系列を学習結果から予測 */
@@ -139,6 +154,7 @@ float SRNNPredictor::learning(void)
   float* prevdWin_mid  = new float[row_in_mid * col_in_mid];
   float* prevdWmid_out = new float[row_mid_out * col_mid_out];
   float* norm_sample   = new float[len_seqence * dim_in_signal]; // 正規化したサンプル信号; 実際の学習は正規化した信号を用います.
+  float* norm_label    = new float[len_seqence * dim_out_signal]; // 正規化したラベル
 
   // 係数行列の初期化
   for (int i=0; i < row_in_mid; i++)
@@ -154,6 +170,13 @@ float SRNNPredictor::learning(void)
     for (int n=0; n < dim_in_signal; n++) {
       MATRIX_AT(norm_sample,dim_in_signal,seq,n) = 
             normalize_signal(MATRIX_AT(this->sample,dim_in_signal,seq,n),
+                             MATRIX_AT(this->sample_maxmin,2,n,0),
+                             MATRIX_AT(this->sample_maxmin,2,n,1));
+    }
+    // ラベルについても同様
+    for (int n=0; n < dim_out_signal; n++) {
+      MATRIX_AT(norm_label,dim_out_signal,seq,n) = 
+            normalize_signal(MATRIX_AT(this->label,dim_out_signal,seq,n),
                              MATRIX_AT(this->sample_maxmin,2,n,0),
                              MATRIX_AT(this->sample_maxmin,2,n,1));
     }
@@ -264,13 +287,12 @@ float SRNNPredictor::learning(void)
 
     // この時点での二乗誤差計算
     squareError = 0;
-    // 次の系列との誤差を見ている!! ここが注目ポイント
-    // ==> つまり,次系列を予測させようとしている.
+    // ラベルとの誤差
     for (int n = 0;n < dim_out_signal;n++) {
       if (seq < len_seqence - 1) {
-        squareError += powf((out_signal[n] - MATRIX_AT(norm_sample,dim_out_signal,seq + 1,n)),2);
+        squareError += powf((out_signal[n] - MATRIX_AT(norm_label,dim_out_signal,seq,n)),2);
       } else {
-        squareError += powf((out_signal[n] - MATRIX_AT(norm_sample,dim_out_signal,0,n)),2);
+        squareError += powf((out_signal[n] - MATRIX_AT(norm_label,dim_out_signal,0,n)),2);
       }
     } 
     squareError /= dim_out_signal;
@@ -297,12 +319,7 @@ float SRNNPredictor::learning(void)
     /* 学習ステップその2:逆誤差伝搬 */
     // 誤差信号の計算
     for (int n = 0; n < dim_out_signal; n++) {
-      if (seq < len_seqence - 1) {
-        sigma[n] = (out_signal[n] - MATRIX_AT(norm_sample,dim_out_signal,seq+1,n)) * out_signal[n] * (1 - out_signal[n]);
-      } else {
-        /* 末尾と先頭の誤差を取る (大抵,大きくなる) */
-        sigma[n] = (out_signal[n] - MATRIX_AT(norm_sample,dim_out_signal,0,n)) * out_signal[n] * (1 - out_signal[n]);
-      }
+        sigma[n] = (out_signal[n] - MATRIX_AT(norm_label,dim_out_signal,seq,n)) * out_signal[n] * (1 - out_signal[n]);
     }
 
     // 出力->中間層の係数の変更量計算
@@ -350,7 +367,6 @@ float SRNNPredictor::learning(void)
     // ループ回数/系列のインクリメント
     iteration += 1;
     seq += 1;
-
   }
 
   return squareError;

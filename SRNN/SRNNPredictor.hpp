@@ -30,6 +30,7 @@ class SRNNPredictor
   public:
     float squareError;           // 二乗誤差(経験誤差)
     float* sample;               // 系列長len_seqenceに渡る次元dim_signalのサンプル
+    float* label;                // サンプルに対応するラベル
     float* sample_maxmin;        // サンプルの取りうる最大/最小値信号を並べたベクトル
     float* predict_signal;       // 予測出力
   private:
@@ -43,10 +44,15 @@ class SRNNPredictor
     // 適宜追加する予定
     SRNNPredictor(int,          // 入力信号の次元dim_in_signal
                   int,          // 出力信号の次元dim_out_signal
-                  int,          // 中間層の数num_mid_neuron
-                  int,          // 系列長
-                  float*,       // サンプル
-                  float*);      // サンプルの最大値/最小値ベクトル
+                  int);         // 中間層の数num_mid_neuron
+
+    // サンプルのセット
+    int set_sample(float*,     // サンプル
+                   float*,     // ラベル系列
+                   float*,     // サンプルの最大値/最小値ベクトル
+                   int,        // 系列長
+                   int,        // サンプルデータの次元
+                   int);       // サンプルラベルの次元
 
     // 逆誤差伝搬法による学習を行い,経験誤差が目標値goalErrorに達するか,
     // 最大繰り返し回数maxIterationに到達したら,その時の二乗誤差を出力する.
