@@ -56,6 +56,10 @@ typedef enum PNMApiResultTag {
 
 /* TODO: ヘッダ読み込み */
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* 幅とサイズを指定して画像作成 */
 struct PNMPicture* PNM_CreatePicture(uint32_t width, uint32_t height);
 
@@ -67,5 +71,9 @@ void PNM_DestroyPicture(struct PNMPicture* picture);
 
 /* ファイル書き込み */
 PNMApiResult PNM_WritePictureToFile(const char* filename, const struct PNMPicture* picture);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* PNM_H_INCLUDED */
