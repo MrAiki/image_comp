@@ -26,11 +26,11 @@ void testAdaptiveHuffman_CreateHuffmanTreeTest(void *obj)
   {
     struct AdaptiveHuffmanTree* tree;
 
-    tree = AdaptiveHuffmanTree_Create();
+    tree = AdaptiveHuffmanTree_Create(8);
 
     Test_AssertCondition(tree != NULL);
-    Test_AssertEqual(tree->nodes[tree->leaf[ADAPTIVE_HUFFMAN_END_OF_STREAM]].weight, 1);
-    Test_AssertEqual(tree->nodes[tree->leaf[ADAPTIVE_HUFFMAN_ESCAPE]].weight, 1);
+    Test_AssertEqual(tree->nodes[tree->leaf[ADAPTIVE_HUFFMAN_END_OF_STREAM(8)]].weight, 1);
+    Test_AssertEqual(tree->nodes[tree->leaf[ADAPTIVE_HUFFMAN_ESCAPE(8)]].weight, 1);
     Test_AssertEqual(tree->nodes[ADAPTIVE_HUFFMAN_ROOT_NODE_INDEX].weight, 2);
 
     AdaptiveHuffmanTree_Destroy(tree);
@@ -51,7 +51,7 @@ void testAdaptiveHuffman_EncodeTest(void *obj)
     const char* filename = "ahuff_encodetest.bin";
 
     stream = BitStream_Open(filename, "wb", NULL, 0);
-    tree = AdaptiveHuffmanTree_Create();
+    tree = AdaptiveHuffmanTree_Create(8);
 
     Test_AssertEqual(tree->leaf[0], ADAPTIVE_HUFFMAN_NODE_NOT_ALLOCATED);
     ret = AdaptiveHuffman_EncodeSymbol(tree, stream, 0);
@@ -87,13 +87,13 @@ void testAdaptiveHuffman_EncodeTest(void *obj)
     const char* filename = "ahuff_encodefailtest.bin";
 
     stream = BitStream_Open(filename, "wb", NULL, 0);
-    tree = AdaptiveHuffmanTree_Create();
+    tree = AdaptiveHuffmanTree_Create(8);
 
     ret = AdaptiveHuffman_EncodeSymbol(NULL, stream, 0);
     Test_AssertEqual(ret, ADAPTIVE_HUFFMAN_APIRESULT_NG);
     ret = AdaptiveHuffman_EncodeSymbol(tree, NULL, 0);
     Test_AssertEqual(ret, ADAPTIVE_HUFFMAN_APIRESULT_NG);
-    ret = AdaptiveHuffman_EncodeSymbol(tree, stream, ADAPTIVE_HUFFMAN_NUM_SYMBOLS);
+    ret = AdaptiveHuffman_EncodeSymbol(tree, stream, ADAPTIVE_HUFFMAN_NUM_SYMBOLS(8));
     Test_AssertEqual(ret, ADAPTIVE_HUFFMAN_APIRESULT_NG);
 
     AdaptiveHuffmanTree_Destroy(tree);
@@ -108,15 +108,15 @@ void testAdaptiveHuffman_EncodeTest(void *obj)
     uint32_t symbol, is_ok;
 
     stream = BitStream_Open(filename, "wb", NULL, 0);
-    tree = AdaptiveHuffmanTree_Create();
+    tree = AdaptiveHuffmanTree_Create(8);
 
-    for (symbol = 0; symbol < ADAPTIVE_HUFFMAN_NUM_SYMBOLS; symbol++) {
+    for (symbol = 0; symbol < ADAPTIVE_HUFFMAN_NUM_SYMBOLS(8); symbol++) {
       AdaptiveHuffman_EncodeSymbol(tree, stream, symbol);
     }
 
     /* 全てのシンボルの重みは1になるか？ */
     is_ok = 1;
-    for (symbol = 0; symbol < ADAPTIVE_HUFFMAN_NUM_SYMBOLS; symbol++) {
+    for (symbol = 0; symbol < ADAPTIVE_HUFFMAN_NUM_SYMBOLS(8); symbol++) {
       if (tree->nodes[tree->leaf[symbol]].weight != 1) {
         is_ok = 0;
         break;
@@ -137,7 +137,7 @@ void testAdaptiveHuffman_EncodeTest(void *obj)
     const uint32_t large_count = ADAPTIVE_HUFFMAN_MAX_WEIGHT + 10;
 
     stream = BitStream_Open(filename, "wb", NULL, 0);
-    tree = AdaptiveHuffmanTree_Create();
+    tree = AdaptiveHuffmanTree_Create(8);
 
     for (count = 0; count < large_count; count++) {
       AdaptiveHuffman_EncodeSymbol(tree, stream, 0);
@@ -166,7 +166,7 @@ void testAdaptiveHuffman_DecodeTest(void *obj)
     const char* filename = "ahuff_decodefailtest.bin";
 
     stream = BitStream_Open(filename, "rb", NULL, 0);
-    tree = AdaptiveHuffmanTree_Create();
+    tree = AdaptiveHuffmanTree_Create(8);
 
     ret = AdaptiveHuffman_DecodeSymbol(NULL, stream, 0);
     Test_AssertEqual(ret, ADAPTIVE_HUFFMAN_APIRESULT_NG);
@@ -196,7 +196,7 @@ void testAdaptiveHuffman_EncodeDecodeTest(void *obj)
     const char* filename = "ahuff_encodedecodetest.bin";
 
     stream = BitStream_Open(filename, "wb", NULL, 0);
-    tree = AdaptiveHuffmanTree_Create();
+    tree = AdaptiveHuffmanTree_Create(8);
     AdaptiveHuffman_EncodeSymbol(tree, stream, 0);
     AdaptiveHuffman_EncodeSymbol(tree, stream, 0);
     AdaptiveHuffman_EncodeSymbol(tree, stream, 1);
@@ -205,7 +205,7 @@ void testAdaptiveHuffman_EncodeDecodeTest(void *obj)
     BitStream_Close(stream);
 
     stream = BitStream_Open(filename, "rb", NULL, 0);
-    tree = AdaptiveHuffmanTree_Create();
+    tree = AdaptiveHuffmanTree_Create(8);
     ret = AdaptiveHuffman_DecodeSymbol(tree, stream, &symbol_buf);
     Test_AssertEqual(symbol_buf, 0);
     Test_AssertEqual(ret, ADAPTIVE_HUFFMAN_APIRESULT_OK);
@@ -232,7 +232,7 @@ void testAdaptiveHuffman_EncodeDecodeTest(void *obj)
 
     /* 木の再構築が起こるまで書く */
     stream = BitStream_Open(filename, "wb", NULL, 0);
-    tree = AdaptiveHuffmanTree_Create();
+    tree = AdaptiveHuffmanTree_Create(8);
     for (count = 0; count < large_count; count++) {
       AdaptiveHuffman_EncodeSymbol(tree, stream, 2);
     }
@@ -240,7 +240,7 @@ void testAdaptiveHuffman_EncodeDecodeTest(void *obj)
     BitStream_Close(stream);
 
     stream = BitStream_Open(filename, "rb", NULL, 0);
-    tree = AdaptiveHuffmanTree_Create();
+    tree = AdaptiveHuffmanTree_Create(8);
     is_ok = 1;
     for (count = 0; count < large_count; count++) {
       AdaptiveHuffman_DecodeSymbol(tree, stream, &symbol);
@@ -263,17 +263,48 @@ void testAdaptiveHuffman_EncodeDecodeTest(void *obj)
 
     /* 万遍なく1回ずつ書き込む */
     stream = BitStream_Open(filename, "wb", NULL, 0);
-    tree = AdaptiveHuffmanTree_Create();
-    for (symbol = 0; symbol < ADAPTIVE_HUFFMAN_NUM_SYMBOLS; symbol++) {
+    tree = AdaptiveHuffmanTree_Create(8);
+    for (symbol = 0; symbol < ADAPTIVE_HUFFMAN_NUM_SYMBOLS(8); symbol++) {
       AdaptiveHuffman_EncodeSymbol(tree, stream, symbol);
     }
     AdaptiveHuffmanTree_Destroy(tree);
     BitStream_Close(stream);
 
     stream = BitStream_Open(filename, "rb", NULL, 0);
-    tree = AdaptiveHuffmanTree_Create();
+    tree = AdaptiveHuffmanTree_Create(8);
     is_ok = 1;
-    for (count = 0; count < ADAPTIVE_HUFFMAN_NUM_SYMBOLS; count++) {
+    for (count = 0; count < ADAPTIVE_HUFFMAN_NUM_SYMBOLS(8); count++) {
+      AdaptiveHuffman_DecodeSymbol(tree, stream, &symbol);
+      if (symbol != count) {
+        is_ok = 0;
+        break;
+      }
+    }
+    Test_AssertEqual(is_ok, 1);
+    AdaptiveHuffmanTree_Destroy(tree);
+    BitStream_Close(stream);
+  }
+
+  /* シンボルを万遍なく(9bit) */
+  {
+    struct BitStream* stream;
+    struct AdaptiveHuffmanTree* tree;
+    const char* filename = "ahuff_uniformencodedecode9bit.bin";
+    uint32_t count, symbol, is_ok;
+
+    /* 万遍なく1回ずつ書き込む */
+    stream = BitStream_Open(filename, "wb", NULL, 0);
+    tree = AdaptiveHuffmanTree_Create(9);
+    for (symbol = 0; symbol < ADAPTIVE_HUFFMAN_NUM_SYMBOLS(9); symbol++) {
+      AdaptiveHuffman_EncodeSymbol(tree, stream, symbol);
+    }
+    AdaptiveHuffmanTree_Destroy(tree);
+    BitStream_Close(stream);
+
+    stream = BitStream_Open(filename, "rb", NULL, 0);
+    tree = AdaptiveHuffmanTree_Create(9);
+    is_ok = 1;
+    for (count = 0; count < ADAPTIVE_HUFFMAN_NUM_SYMBOLS(9); count++) {
       AdaptiveHuffman_DecodeSymbol(tree, stream, &symbol);
       if (symbol != count) {
         is_ok = 0;
@@ -295,10 +326,10 @@ void testAdaptiveHuffman_EncodeDecodeTest(void *obj)
     uint32_t answer[NUM_RANDOM_OUTPUT];
 
     stream = BitStream_Open(filename, "wb", NULL, 0);
-    tree = AdaptiveHuffmanTree_Create();
+    tree = AdaptiveHuffmanTree_Create(8);
     srand(0);
-    for (count = 0; count < ADAPTIVE_HUFFMAN_NUM_SYMBOLS; count++) {
-      symbol = rand() % ADAPTIVE_HUFFMAN_NUM_SYMBOLS;
+    for (count = 0; count < ADAPTIVE_HUFFMAN_NUM_SYMBOLS(8); count++) {
+      symbol = rand() % ADAPTIVE_HUFFMAN_NUM_SYMBOLS(8);
       answer[count] = symbol;
       AdaptiveHuffman_EncodeSymbol(tree, stream, symbol);
     }
@@ -306,9 +337,45 @@ void testAdaptiveHuffman_EncodeDecodeTest(void *obj)
     BitStream_Close(stream);
 
     stream = BitStream_Open(filename, "rb", NULL, 0);
-    tree = AdaptiveHuffmanTree_Create();
+    tree = AdaptiveHuffmanTree_Create(8);
     is_ok = 1;
-    for (count = 0; count < ADAPTIVE_HUFFMAN_NUM_SYMBOLS; count++) {
+    for (count = 0; count < ADAPTIVE_HUFFMAN_NUM_SYMBOLS(8); count++) {
+      AdaptiveHuffman_DecodeSymbol(tree, stream, &symbol);
+      if (symbol != answer[count]) {
+        is_ok = 0;
+        break;
+      }
+    }
+    Test_AssertEqual(is_ok, 1);
+    AdaptiveHuffmanTree_Destroy(tree);
+    BitStream_Close(stream);
+#undef NUM_RANDOM_OUTPUT
+  }
+
+  /* ランダム(9bit) */
+  {
+#define NUM_RANDOM_OUTPUT 4096
+    struct BitStream* stream;
+    struct AdaptiveHuffmanTree* tree;
+    const char* filename = "ahuff_randencodedecode9bit.bin";
+    uint32_t count, symbol, is_ok;
+    uint32_t answer[NUM_RANDOM_OUTPUT];
+
+    stream = BitStream_Open(filename, "wb", NULL, 0);
+    tree = AdaptiveHuffmanTree_Create(9);
+    srand(0);
+    for (count = 0; count < ADAPTIVE_HUFFMAN_NUM_SYMBOLS(9); count++) {
+      symbol = rand() % ADAPTIVE_HUFFMAN_NUM_SYMBOLS(9);
+      answer[count] = symbol;
+      AdaptiveHuffman_EncodeSymbol(tree, stream, symbol);
+    }
+    AdaptiveHuffmanTree_Destroy(tree);
+    BitStream_Close(stream);
+
+    stream = BitStream_Open(filename, "rb", NULL, 0);
+    tree = AdaptiveHuffmanTree_Create(9);
+    is_ok = 1;
+    for (count = 0; count < ADAPTIVE_HUFFMAN_NUM_SYMBOLS(9); count++) {
       AdaptiveHuffman_DecodeSymbol(tree, stream, &symbol);
       if (symbol != answer[count]) {
         is_ok = 0;
@@ -337,7 +404,7 @@ void testAdaptiveHuffman_EncodeDecodeTest(void *obj)
     /* エンコード */
     in_stream = BitStream_Open(filename, "rb", NULL, 0);
     out_stream = BitStream_Open(out_filename, "wb", NULL, 0);
-    tree = AdaptiveHuffmanTree_Create();
+    tree = AdaptiveHuffmanTree_Create(8);
     nbytes = 0;
     while (BitStream_GetBits(in_stream, 8, &bitsbuf) == 0) {
       AdaptiveHuffman_EncodeSymbol(tree, out_stream, (uint32_t)bitsbuf);
@@ -350,7 +417,7 @@ void testAdaptiveHuffman_EncodeDecodeTest(void *obj)
     in_stream   = BitStream_Open(out_filename, "rb", NULL, 0);
     out_stream  = BitStream_Open(dec_filename, "wb", NULL, 0);
     test_stream = BitStream_Open(filename, "rb", NULL, 0);
-    tree = AdaptiveHuffmanTree_Create();
+    tree = AdaptiveHuffmanTree_Create(8);
     /* 一致確認しつつ */
     is_ok = 1;
     while (--nbytes > 0) {

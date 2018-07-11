@@ -14,7 +14,7 @@ typedef enum AdaptiveHuffmanApiResultTag {
 } AdaptiveHuffmanApiResult;
 
 /* 適応型ハフマン木の作成 */
-struct AdaptiveHuffmanTree* AdaptiveHuffmanTree_Create(void);
+struct AdaptiveHuffmanTree* AdaptiveHuffmanTree_Create(uint32_t symbol_bits);
 
 /* 適応型ハフマン木の破棄 */
 void AdaptiveHuffmanTree_Destroy(struct AdaptiveHuffmanTree* tree);

@@ -2,31 +2,30 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define ADAPTIVE_HUFFMAN_SYMBOL_BITS        8       /* シンボルに割り当てるビット数 TODO:木側に持たせる */
-#define ADAPTIVE_HUFFMAN_NUM_SYMBOLS \
-  (1UL << ADAPTIVE_HUFFMAN_SYMBOL_BITS)       /* 通常のシンボル数 */
-#define ADAPTIVE_HUFFMAN_END_OF_STREAM      (ADAPTIVE_HUFFMAN_NUM_SYMBOLS)        /* 終端文字 */
-#define ADAPTIVE_HUFFMAN_ESCAPE             (ADAPTIVE_HUFFMAN_NUM_SYMBOLS+1)      /* エスケープ文字 */
-#define ADAPTIVE_HUFFMAN_NUM_ALL_SYMBOLS    (ADAPTIVE_HUFFMAN_NUM_SYMBOLS+2)      /* 全シンボル数 */
-#define ADAPTIVE_HUFFMAN_NUM_NODE_TABLE \
-  ((ADAPTIVE_HUFFMAN_NUM_ALL_SYMBOLS * 2)-1)        /* ノード配列の数 */
-#define ADAPTIVE_HUFFMAN_ROOT_NODE_INDEX    0       /* ルートノードのインデックス */
-#define ADAPTIVE_HUFFMAN_MAX_WEIGHT         0x8000  /* ノードの最大重み */
+#define ADAPTIVE_HUFFMAN_NUM_SYMBOLS(n_bits)      (1UL << (n_bits))       /* 通常のシンボル数 */
+#define ADAPTIVE_HUFFMAN_END_OF_STREAM(n_bits)    (ADAPTIVE_HUFFMAN_NUM_SYMBOLS(n_bits))        /* 終端文字 */
+#define ADAPTIVE_HUFFMAN_ESCAPE(n_bits)           (ADAPTIVE_HUFFMAN_NUM_SYMBOLS(n_bits)+1)      /* エスケープ文字 */
+#define ADAPTIVE_HUFFMAN_NUM_ALL_SYMBOLS(n_bits)  (ADAPTIVE_HUFFMAN_NUM_SYMBOLS(n_bits)+2)      /* 全シンボル数 */
+#define ADAPTIVE_HUFFMAN_NUM_NODE_TABLE(n_bits) \
+  ((ADAPTIVE_HUFFMAN_NUM_ALL_SYMBOLS(n_bits) * 2)-1)              /* ノード配列の数 */
+#define ADAPTIVE_HUFFMAN_ROOT_NODE_INDEX          0               /* ルートノードのインデックス */
+#define ADAPTIVE_HUFFMAN_MAX_WEIGHT               0x8000          /* ノードの最大重み */
 
-#define ADAPTIVE_HUFFMAN_TRUE               1
-#define ADAPTIVE_HUFFMAN_FALSE              0
-#define ADAPTIVE_HUFFMAN_NODE_NOT_ALLOCATED (-1)    /* ノード未割り当て */
+#define ADAPTIVE_HUFFMAN_TRUE                     1
+#define ADAPTIVE_HUFFMAN_FALSE                    0
+#define ADAPTIVE_HUFFMAN_NODE_NOT_ALLOCATED       (-1)            /* ノード未割り当て */
 
 /* 適応的ハフマン木 */
 struct AdaptiveHuffmanTree {
-  int32_t leaf[ADAPTIVE_HUFFMAN_NUM_ALL_SYMBOLS]; /* 葉に対するノードインデックス */
-  int32_t next_free_node;                         /* 次に割当予定のノード */
+  uint32_t symbol_bits;                     /* 1シンボルのビット幅 */
+  int32_t  *leaf;                           /* 葉に対するノードインデックス */
+  int32_t next_free_node;                   /* 次に割当予定のノード */
   struct AdaptiveHuffmanNode {
-    uint32_t  weight;                             /* パターンの頻度 */
-    int32_t   parent;                             /* 親ノード */
-    int32_t   child_is_leaf;                      /* 子ノードは葉か？ */
-    int32_t   child;                              /* 子ノードの一要素（もしくは実際の記号値） */
-  } nodes[ADAPTIVE_HUFFMAN_NUM_NODE_TABLE];       /* ノード配列: 重みは降順、かつ、隣接する2つの要素は互い同一の親を持つ（兄弟特性を満たす） */
+    uint32_t  weight;                       /* パターンの頻度 */
+    int32_t   parent;                       /* 親ノード */
+    int32_t   child_is_leaf;                /* 子ノードは葉か？ */
+    int32_t   child;                        /* 子ノードの一要素（もしくは実際の記号値）*/
+  } *nodes; /* ノード配列: 重みは降順、かつ、隣接する2つの要素は互い同一の親を持つ（兄弟特性を満たす） */
 };
 
 /* モデル（木）の更新 */
@@ -43,16 +42,20 @@ static void AdaptiveHuffman_SwapNodes(
     struct AdaptiveHuffmanTree* tree, uint32_t node_i, uint32_t node_j);
 
 /* 適応型ハフマン木の作成 */
-struct AdaptiveHuffmanTree* AdaptiveHuffmanTree_Create(void)
+struct AdaptiveHuffmanTree* AdaptiveHuffmanTree_Create(uint32_t symbol_bits)
 {
   int32_t i_leaf;
   struct AdaptiveHuffmanTree* tree;
 
   /* 領域割当 */
-  tree = (struct AdaptiveHuffmanTree*)malloc(sizeof(struct AdaptiveHuffmanTree));
+  tree = (struct AdaptiveHuffmanTree *)malloc(sizeof(struct AdaptiveHuffmanTree));
+  tree->symbol_bits = symbol_bits;
+
+  tree->leaf  = (int32_t *)malloc(sizeof(int32_t) * ADAPTIVE_HUFFMAN_NUM_ALL_SYMBOLS(symbol_bits));
+  tree->nodes = (struct AdaptiveHuffmanNode *)malloc(sizeof(struct AdaptiveHuffmanNode) * ADAPTIVE_HUFFMAN_NUM_NODE_TABLE(symbol_bits));
 
   /* 葉の情報をクリア */
-  for (i_leaf = 0; i_leaf < (int32_t)ADAPTIVE_HUFFMAN_NUM_ALL_SYMBOLS; i_leaf++) {
+  for (i_leaf = 0; i_leaf < (int32_t)ADAPTIVE_HUFFMAN_NUM_ALL_SYMBOLS(symbol_bits); i_leaf++) {
     tree->leaf[i_leaf] = ADAPTIVE_HUFFMAN_NODE_NOT_ALLOCATED;
   }
 
@@ -68,26 +71,26 @@ struct AdaptiveHuffmanTree* AdaptiveHuffmanTree_Create(void)
 
   /* EOSノードの作成 */
   tree->nodes[ADAPTIVE_HUFFMAN_ROOT_NODE_INDEX+1].child
-    = ADAPTIVE_HUFFMAN_END_OF_STREAM;
+    = ADAPTIVE_HUFFMAN_END_OF_STREAM(symbol_bits);
   tree->nodes[ADAPTIVE_HUFFMAN_ROOT_NODE_INDEX+1].child_is_leaf
     = ADAPTIVE_HUFFMAN_TRUE;
   tree->nodes[ADAPTIVE_HUFFMAN_ROOT_NODE_INDEX+1].weight
     = 1;
   tree->nodes[ADAPTIVE_HUFFMAN_ROOT_NODE_INDEX+1].parent
     = ADAPTIVE_HUFFMAN_ROOT_NODE_INDEX;
-  tree->leaf[ADAPTIVE_HUFFMAN_END_OF_STREAM]
+  tree->leaf[ADAPTIVE_HUFFMAN_END_OF_STREAM(symbol_bits)]
     = ADAPTIVE_HUFFMAN_ROOT_NODE_INDEX+1;
 
   /* エスケープシンボルノードの作成 */
   tree->nodes[ADAPTIVE_HUFFMAN_ROOT_NODE_INDEX+2].child
-    = ADAPTIVE_HUFFMAN_ESCAPE;
+    = ADAPTIVE_HUFFMAN_ESCAPE(symbol_bits);
   tree->nodes[ADAPTIVE_HUFFMAN_ROOT_NODE_INDEX+2].child_is_leaf
     = ADAPTIVE_HUFFMAN_TRUE;
   tree->nodes[ADAPTIVE_HUFFMAN_ROOT_NODE_INDEX+2].weight
     = 1;
   tree->nodes[ADAPTIVE_HUFFMAN_ROOT_NODE_INDEX+2].parent
     = ADAPTIVE_HUFFMAN_ROOT_NODE_INDEX;
-  tree->leaf[ADAPTIVE_HUFFMAN_ESCAPE]
+  tree->leaf[ADAPTIVE_HUFFMAN_ESCAPE(symbol_bits)]
     = ADAPTIVE_HUFFMAN_ROOT_NODE_INDEX+2;
 
   /* 次に割当予定のノードインデックス */
@@ -100,6 +103,12 @@ struct AdaptiveHuffmanTree* AdaptiveHuffmanTree_Create(void)
 void AdaptiveHuffmanTree_Destroy(struct AdaptiveHuffmanTree* tree)
 {
   if (tree != NULL) {
+    if (tree->leaf != NULL) {
+      free(tree->leaf);
+    }
+    if (tree->nodes != NULL) {
+      free(tree->nodes);
+    }
     free(tree);
   }
 }
@@ -117,7 +126,7 @@ AdaptiveHuffmanApiResult AdaptiveHuffman_EncodeSymbol(
 
   /* 引数チェック */
   if (tree == NULL || strm == NULL
-      || symbol >= ADAPTIVE_HUFFMAN_NUM_SYMBOLS) {
+      || symbol >= ADAPTIVE_HUFFMAN_NUM_SYMBOLS(tree->symbol_bits)) {
     return ADAPTIVE_HUFFMAN_APIRESULT_NG;
   }
 
@@ -126,7 +135,7 @@ AdaptiveHuffmanApiResult AdaptiveHuffman_EncodeSymbol(
 
   /* 未割り当て符号の場合はエスケープシンボルに割り当てる */
   if (current_node == ADAPTIVE_HUFFMAN_NODE_NOT_ALLOCATED) {
-    current_node = tree->leaf[ADAPTIVE_HUFFMAN_ESCAPE];
+    current_node = tree->leaf[ADAPTIVE_HUFFMAN_ESCAPE(tree->symbol_bits)];
   }
 
   /* ルートに達するまで木を上向きにたどる */
@@ -151,7 +160,7 @@ AdaptiveHuffmanApiResult AdaptiveHuffman_EncodeSymbol(
   /* 未割り当てのノードの場合は
    * そのままのシンボルを続けて出力し、ノードを新規に登録する */
   if (tree->leaf[symbol] == ADAPTIVE_HUFFMAN_NODE_NOT_ALLOCATED) {
-    BitStream_PutBits(strm, ADAPTIVE_HUFFMAN_SYMBOL_BITS, symbol);
+    BitStream_PutBits(strm, tree->symbol_bits, symbol);
     AdaptiveHuffman_AddNewNode(tree, symbol);
   }
   
@@ -189,8 +198,8 @@ AdaptiveHuffmanApiResult AdaptiveHuffman_DecodeSymbol(
 
   /* エスケープシンボルだった場合は続けて読むことで、
    * そのままのシンボルが得られる */
-  if (tmp_symbol == ADAPTIVE_HUFFMAN_ESCAPE) {
-    BitStream_GetBits(strm, ADAPTIVE_HUFFMAN_SYMBOL_BITS, &bitsbuf);
+  if (tmp_symbol == ADAPTIVE_HUFFMAN_ESCAPE(tree->symbol_bits)) {
+    BitStream_GetBits(strm, tree->symbol_bits, &bitsbuf);
     tmp_symbol = (uint32_t)bitsbuf;
     AdaptiveHuffman_AddNewNode(tree, tmp_symbol);
   }
