@@ -1,10 +1,12 @@
 #include "coding.h"
+#include "../AdaptiveHuffman/adaptive_huffman.h"
 #include "../../BitStream/bit_stream.h"
 
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 
+#define MAX(a,b) (((a) > (b)) ? (a) : (b))
 #define GET_INT_SIGN(val) (((val) > 0) ? 1 : 0)
 #define GET_INT_ABS(val)  (((val) > 0) ? (val) : (-(val)))
 
@@ -243,6 +245,7 @@ void PackBits_Encode(struct BitStream* strm,
       }
     }
   }
+
 }
 
 /* Pack Bitsによる復号 */
@@ -292,4 +295,206 @@ void PackBits_Decode(struct BitStream* strm,
     }
   } 
 
+}
+
+static uint32_t run_array[1UL << 9] = { 0, };
+
+/* Mineo版Pack Bitsによる符号化 */
+void MineoPackBits_Encode(struct BitStream* strm,
+    const uint32_t* data, uint32_t num_data,
+    uint32_t golomb_m, uint32_t threshould, uint32_t length_bits)
+{
+  uint32_t pos;
+  uint32_t runlength;
+  uint32_t head_run, tail_run;
+  uint8_t  headtailrun_bits;
+  const uint32_t MAXLENGTH = (1UL << length_bits) - 1;   /* 表現可能な最大長 */
+  struct AdaptiveHuffmanTree* tree
+    = AdaptiveHuffmanTree_Create(length_bits);
+  struct AdaptiveHuffmanTree* code_tree
+    = AdaptiveHuffmanTree_Create(length_bits);
+
+  /* 先頭の0と末尾の0長さを記録 */
+  /* 先頭 */
+  head_run = 0;
+  if (data[0] == 0) {
+    head_run = PackBits_GetRunLength(data, 0, num_data);
+  }
+  /* 末尾 */
+  tail_run = 0;
+  for (pos = num_data-1; pos > head_run; pos--) {
+    if (data[pos] != 0) {
+      break;
+    }
+    tail_run++;
+  }
+  /* その値を可変長で記録 */
+  if (MAX(head_run, tail_run) != 0) {
+    headtailrun_bits = log2ceil(MAX(head_run, tail_run));
+  } else {
+    headtailrun_bits = 1;
+  }
+  BitStream_PutBits(strm, 5, headtailrun_bits);
+  BitStream_PutBits(strm, headtailrun_bits, head_run);
+  BitStream_PutBits(strm, headtailrun_bits, tail_run);
+
+  /* 開始位置とデータ数の差し替え */
+  pos = head_run;
+  num_data = num_data - tail_run;
+
+  /* 最初がどちらのモードで始まるのか出力しておく */
+  runlength = PackBits_GetRunLength(data, pos, num_data);
+  if (runlength < threshould || data[pos] != 0) {
+    BitStream_PutBit(strm, PACKBITS_MODE_NOT_RUN);
+  } else {
+    BitStream_PutBit(strm, PACKBITS_MODE_RUN);
+  }
+
+  while (pos < num_data) {
+    /* ランレングス取得 */
+    runlength = PackBits_GetRunLength(data, pos, num_data);
+    if (data[pos] != 0 || runlength < threshould) {
+      /* 非ラン出力モード */
+      uint32_t notrunlength, notrun, tmp_pos;
+      /* 非ランの出力回数を取得 */
+      notrunlength = 0;
+      tmp_pos = pos;
+      while (((PackBits_GetRunLength(data, tmp_pos, num_data) < threshould)
+              || (data[tmp_pos] != 0))
+              && (tmp_pos < num_data)) {
+        notrunlength++; tmp_pos++;
+      }
+
+      /*
+      printf("notrun:%d \n", notrunlength);
+      for (notrun = 0; notrun < notrunlength; notrun++) {
+        printf("%d, ", data[pos + notrun]);
+      }
+      printf("\n");
+      */
+
+      /* 非ラン分出力 */
+      while (notrunlength >= MAXLENGTH) {
+        AdaptiveHuffman_EncodeSymbol(tree, strm, MAXLENGTH);
+        run_array[MAXLENGTH]++;
+        for (notrun = 0; notrun < MAXLENGTH; notrun++) {
+          // Golomb_PutCode(strm, golomb_m, data[pos++]);
+          AdaptiveHuffman_EncodeSymbol(code_tree, strm, data[pos++]);
+        }
+        /* 非ラン継続符号を出力 */
+        AdaptiveHuffman_EncodeSymbol(tree, strm, 0);
+        run_array[0]++;
+        notrunlength -= MAXLENGTH;
+      }
+      AdaptiveHuffman_EncodeSymbol(tree, strm, notrunlength);
+      run_array[notrunlength]++;
+      for (notrun = 0; notrun < notrunlength; notrun++) {
+        // Golomb_PutCode(strm, golomb_m, data[pos++]);
+        AdaptiveHuffman_EncodeSymbol(code_tree, strm, data[pos++]);
+      }
+    } else {
+      /* ラン出力モード */
+      /* 実際に登録するラン長さはランレングス+1 */
+      runlength++;
+      // printf("run:%d \n", runlength);
+      /* ランレングスだけ進むのは確定なので先に進めておく */
+      pos += runlength;
+      /* ランレングス出力 */
+      while (runlength >= MAXLENGTH) {
+        AdaptiveHuffman_EncodeSymbol(tree, strm, MAXLENGTH);
+        run_array[MAXLENGTH]++;
+        /* ラン継続符号を出力 */
+        AdaptiveHuffman_EncodeSymbol(tree, strm, 0);
+        run_array[0]++;
+        runlength -= MAXLENGTH;
+      }
+      AdaptiveHuffman_EncodeSymbol(tree, strm, runlength);
+      run_array[runlength]++;
+    }
+  }
+
+  /* ランの分布 */
+  {
+    uint32_t i;
+    for (i = 0; i <= MAXLENGTH; i++) {
+      // printf("%d %d \n", i, run_array[i]);
+    }
+  }
+
+  AdaptiveHuffmanTree_Destroy(code_tree);
+  AdaptiveHuffmanTree_Destroy(tree);
+}
+
+/* Mineo版Pack Bitsによる復号 */
+void MineoPackBits_Decode(struct BitStream* strm,
+    uint32_t* data, uint32_t num_data,
+    uint32_t golomb_m, uint32_t length_bits)
+{
+  uint32_t      pos, i;
+  PackBitsMode  mode;
+  uint32_t      length;
+  uint64_t      bitsbuf;
+  uint32_t      headtailrun_bits, head_run, tail_run;
+  struct AdaptiveHuffmanTree* tree
+    = AdaptiveHuffmanTree_Create(length_bits);
+  struct AdaptiveHuffmanTree* code_tree
+    = AdaptiveHuffmanTree_Create(length_bits);
+
+  assert(data != NULL);
+
+  /* 先頭と末尾の0を取得 */
+  BitStream_GetBits(strm, 5, &bitsbuf);
+  headtailrun_bits = (uint8_t)bitsbuf;
+  BitStream_GetBits(strm, headtailrun_bits, &bitsbuf);
+  head_run = (uint32_t)bitsbuf;
+  BitStream_GetBits(strm, headtailrun_bits, &bitsbuf);
+  tail_run = (uint32_t)bitsbuf;
+  for (pos = 0; pos < head_run; pos++) {
+    data[pos] = 0;
+  }
+  for (pos = num_data - tail_run; pos < num_data; pos++) {
+    data[pos] = 0;
+  }
+  // printf("head:%d tail:%d \n", head_run, tail_run);
+
+  /* 開始位置とデータ数の切り替え */
+  pos = head_run;
+  num_data = num_data - tail_run;
+
+  /* 最初のモード取得 */
+  mode = BitStream_GetBit(strm);
+
+  /* 最初のモード切り替えで切り替わるので一回反転する */
+  mode = (mode == PACKBITS_MODE_RUN) ?
+    PACKBITS_MODE_NOT_RUN : PACKBITS_MODE_RUN;
+  while (pos < num_data) {
+    /* ラン/非ラン長を取得 */
+    AdaptiveHuffman_DecodeSymbol(tree, strm, &length);
+    if (length == 0) {
+      /* モード継続: 長さを再取得 */
+      AdaptiveHuffman_DecodeSymbol(tree, strm, &length);
+    } else {
+      /* モード切り替え */
+      mode = (mode == PACKBITS_MODE_RUN) ?
+        PACKBITS_MODE_NOT_RUN : PACKBITS_MODE_RUN;
+    }
+    switch (mode) {
+      case PACKBITS_MODE_NOT_RUN:
+        for (i = 0; i < length; i++) {
+          // data[pos++] = Golomb_GetCode(strm, golomb_m);
+          AdaptiveHuffman_DecodeSymbol(code_tree, strm, &data[pos++]);
+        }
+        break;
+      case PACKBITS_MODE_RUN:
+        for (i = 0; i < length; i++) {
+          data[pos++] = 0;
+        }
+        break;
+      default:
+        assert(0);
+    }
+  } 
+
+  AdaptiveHuffmanTree_Destroy(code_tree);
+  AdaptiveHuffmanTree_Destroy(tree);
 }

@@ -25,4 +25,14 @@ void PackBits_Encode(struct BitStream* strm,
 void PackBits_Decode(struct BitStream* strm,
     uint32_t* data, uint32_t num_data, uint32_t golomb_m, uint32_t length_bits);
 
+/* Mineo版Pack Bitsによる復号 */
+void MineoPackBits_Decode(struct BitStream* strm,
+    uint32_t* data, uint32_t num_data,
+    uint32_t golomb_m, uint32_t length_bits);
+
+/* Mineo版Pack Bitsによる符号化 */
+void MineoPackBits_Encode(struct BitStream* strm,
+    const uint32_t* data, uint32_t num_data,
+    uint32_t golomb_m, uint32_t threshould, uint32_t length_bits);
+
 #endif /* CODING_UTIL_H_INCLUDED */

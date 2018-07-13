@@ -1,5 +1,6 @@
 #include "coding.h"
 #include "../../BitStream/bit_stream.h"
+#include "../AdaptiveHuffman/adaptive_huffman.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,6 +9,7 @@
 #define NUM_DIFF_ARRAY 512
 #define MAX(a,b) (((a) > (b)) ? (a) : (b))
 #define MIN(a,b) (((a) < (b)) ? (a) : (b))
+#define ABS(val) (((val) > 0) ? (val) : -(val))
 
 /* アクセサ */
 #define SGMPicture_GRAY(sgm, x, y) ((sgm)->gray[(x) + (y) * ((sgm)->width)])
@@ -129,6 +131,44 @@ static int32_t predict_jpeg2(uint32_t a, uint32_t b, uint32_t c)
   return a + c - b;
 }
 
+static int32_t predict_myjpeg2(int32_t w,
+    int32_t n, int32_t nw, int32_t nn, int32_t ww)
+{
+  int32_t predict;
+  if (nw >= MAX(n,w)) {
+    predict = MIN(n,w);
+    if (ABS(nw - MAX(n,w)) > 20) {
+      if (n < w) {
+        if (nn > n) {
+          predict = MAX(n - (nn - n) / 2, 0);
+        } 
+      } else {
+        if (ww > w) {
+          predict = MAX(w - (ww - w) / 2, 0);
+        } 
+      }
+    }
+    return predict;
+  } else if (nw <= MIN(n,w)) {
+    predict = MAX(n,w);
+    if (ABS(nw - MIN(n,w)) > 20) {
+      if (n > w) {
+        if (nn < n) {
+          predict = MIN(n + (n - nn) / 2, 255);
+        } 
+      } else {
+        if (ww < w) {
+          predict = MIN(w + (w - ww) / 5, 255);
+        } 
+      }
+    }
+    return predict;
+  } 
+  
+  /* 平面予測 */
+  return n + w - nw;
+}
+
 /* 符号付きシンボル配列を符号なしに変換 */
 static void convert_signed_to_unsigned(uint32_t* dst, const int32_t* src, uint32_t num)
 {
@@ -187,10 +227,13 @@ static int encode(const char* in_filename,
   /* あとはJPEG予測 */
   for (y = 1; y < sgm->height; y++) {
     for (x = 1; x < sgm->width; x++) {
-      int32_t a = SGMPicture_GetGRAY(sgm, x-1, y);
-      int32_t b = SGMPicture_GetGRAY(sgm, x-1, y-1);
-      int32_t c = SGMPicture_GetGRAY(sgm,   x, y-1);
-      diff[i_data++] = predict_jpeg2(a,b,c) - SGMPicture_GetGRAY(sgm, x, y);
+      int32_t w  = SGMPicture_GetGRAY(sgm, x-1, y);
+      int32_t nw = SGMPicture_GetGRAY(sgm, x-1, y-1);
+      int32_t n  = SGMPicture_GetGRAY(sgm,   x, y-1);
+      int32_t nn = SGMPicture_GetGRAY(sgm,   x, y-2);
+      int32_t ww = SGMPicture_GetGRAY(sgm, x-2, y);
+      // diff[i_data++] = predict_jpeg2(w,nw,n) - SGMPicture_GetGRAY(sgm, x, y);
+      diff[i_data++] = predict_myjpeg2(w,n,nw,nn,ww) - SGMPicture_GetGRAY(sgm, x, y);
     }
   }
   SGMPicture_Destroy(sgm);
@@ -212,7 +255,8 @@ static int encode(const char* in_filename,
   BitStream_PutBits(strm, 8, SGMPicture_GRAY(sgm, 0, 0));
   /* 差分信号 */
   convert_signed_to_unsigned(output_symbol, diff, num_data);
-  PackBits_Encode(strm, output_symbol, num_data, golomb_m, threshould, length_bits);
+  MineoPackBits_Encode(strm,
+      output_symbol, num_data, golomb_m, threshould, length_bits);
   BitStream_Close(strm);
 
   free(diff);
@@ -271,7 +315,8 @@ static int decode(const char* in_filename,
   SGMPicture_GRAY(sgm, 0, 0) = (uint8_t)bitsbuf;
 
   /* それ以外の画素はPackBitsにより符号化されている */
-  PackBits_Decode(strm, output_symbol, num_data, golomb_m, length_bits);
+  MineoPackBits_Decode(strm,
+      output_symbol, num_data, golomb_m, length_bits);
   BitStream_Close(strm);
   convert_unsigned_to_signed(diff, output_symbol, num_data);
 
@@ -291,11 +336,13 @@ static int decode(const char* in_filename,
   /* JPEG予想分 */
   for (y = 1; y < sgm->height; y++) {
     for (x = 1; x < sgm->width; x++) {
-      int32_t a = SGMPicture_GetGRAY(sgm, x-1, y);
-      int32_t b = SGMPicture_GetGRAY(sgm, x-1, y-1);
-      int32_t c = SGMPicture_GetGRAY(sgm, x,   y-1);
-      SGMPicture_GRAY(sgm, x, y)
-        = predict_jpeg2(a,b,c) - diff[i_data++];
+      int32_t w  = SGMPicture_GetGRAY(sgm, x-1, y);
+      int32_t nw = SGMPicture_GetGRAY(sgm, x-1, y-1);
+      int32_t n  = SGMPicture_GetGRAY(sgm, x,   y-1);
+      int32_t nn = SGMPicture_GetGRAY(sgm,   x, y-2);
+      int32_t ww = SGMPicture_GetGRAY(sgm, x-2, y);
+      // SGMPicture_GRAY(sgm, x, y) = predict_jpeg2(w,nw,n) - diff[i_data++];
+      SGMPicture_GRAY(sgm, x, y) = predict_myjpeg2(w,n,nw,nn,ww) - diff[i_data++];
     }
   }
 
@@ -310,8 +357,8 @@ static int decode(const char* in_filename,
 
 int main(int argc, char** argv)
 {
-  const uint32_t golomb_m     = 3;
-  const uint32_t threshould   = 5;
+  const uint32_t golomb_m     = 2;
+  const uint32_t threshould   = 10;
   const uint32_t length_bits  = 9;
 
   if (argc != 3) {
