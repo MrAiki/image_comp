@@ -36,10 +36,6 @@ static void NaiveLZSS_SearchMatchPosition(
     const struct NaiveLZSS* lzss,
     uint32_t* match_pos, uint32_t* match_len);
 
-/* スライド窓初期化 */
-static void NaiveLZSS_Initialize(
-    struct NaiveLZSS* lzss);
-
 /* ceil(log2(val)) を計算する */
 static uint32_t log2ceil(uint32_t val);
 
@@ -76,8 +72,7 @@ struct NaiveLZSS* NaiveLZSS_Create(
 }
 
 /* スライド窓初期化 */
-static void NaiveLZSS_Initialize(
-    struct NaiveLZSS* lzss)
+void NaiveLZSS_Initialize(struct NaiveLZSS* lzss)
 {
   uint32_t i;
 
@@ -104,7 +99,7 @@ void NaiveLZSS_Destroy(struct NaiveLZSS* lzss)
 }
 
 /* エンコード処理 */
-NaiveLZSSApiResult NaiveLZSS_EncodeSymbol(
+NaiveLZSSApiResult NaiveLZSS_Encode(
     struct NaiveLZSS* lzss, struct BitStream* strm,
     const uint32_t* data, uint32_t num_data)
 {
@@ -156,7 +151,7 @@ NaiveLZSSApiResult NaiveLZSS_EncodeSymbol(
 }
 
 /* デコード処理 */
-NaiveLZSSApiResult NaiveLZSS_DecodeSymbol(
+NaiveLZSSApiResult NaiveLZSS_Decode(
     struct NaiveLZSS* lzss, struct BitStream* strm,
     uint32_t* data, uint32_t num_data)
 {

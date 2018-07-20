@@ -69,7 +69,7 @@ void testNaiveLZSS_EncodeDecodeTest(void *obj)
     lzss = NaiveLZSS_Create(8, 16, 1, 2);
     strm = BitStream_Open("encdectest1.bin", "wb", NULL, 0);
     Test_AssertEqual(
-        NaiveLZSS_EncodeSymbol(lzss, strm, test_symbol, 7),
+        NaiveLZSS_Encode(lzss, strm, test_symbol, 7),
         NAIVE_LZSS_APIRESULT_OK);
     NaiveLZSS_Destroy(lzss);
     BitStream_Close(strm);
@@ -78,7 +78,7 @@ void testNaiveLZSS_EncodeDecodeTest(void *obj)
     lzss = NaiveLZSS_Create(8, 16, 1, 2);
     strm = BitStream_Open("encdectest1.bin", "rb", NULL, 0);
     Test_AssertEqual(
-        NaiveLZSS_DecodeSymbol(lzss, strm, test, 7),
+        NaiveLZSS_Decode(lzss, strm, test, 7),
         NAIVE_LZSS_APIRESULT_OK);
     
     is_ok = 1;
@@ -106,7 +106,7 @@ void testNaiveLZSS_EncodeDecodeTest(void *obj)
     lzss = NaiveLZSS_Create(8, 16, 1, 2);
     strm = BitStream_Open("encdectest2.bin", "wb", NULL, 0);
     Test_AssertEqual(
-        NaiveLZSS_EncodeSymbol(lzss, strm, test_symbol, 9),
+        NaiveLZSS_Encode(lzss, strm, test_symbol, 9),
         NAIVE_LZSS_APIRESULT_OK);
     NaiveLZSS_Destroy(lzss);
     BitStream_Close(strm);
@@ -115,7 +115,7 @@ void testNaiveLZSS_EncodeDecodeTest(void *obj)
     lzss = NaiveLZSS_Create(8, 16, 1, 2);
     strm = BitStream_Open("encdectest2.bin", "rb", NULL, 0);
     Test_AssertEqual(
-        NaiveLZSS_DecodeSymbol(lzss, strm, test, 9),
+        NaiveLZSS_Decode(lzss, strm, test, 9),
         NAIVE_LZSS_APIRESULT_OK);
 
     is_ok = 1;
@@ -148,7 +148,7 @@ void testNaiveLZSS_EncodeDecodeTest(void *obj)
     lzss = NaiveLZSS_Create(7, 16, 1, 2);
     strm = BitStream_Open("encdectest3.bin", "wb", NULL, 0);
     Test_AssertEqual(
-        NaiveLZSS_EncodeSymbol(lzss, strm, answer, NUM_TEST_SYMBOLS),
+        NaiveLZSS_Encode(lzss, strm, answer, NUM_TEST_SYMBOLS),
         NAIVE_LZSS_APIRESULT_OK);
     NaiveLZSS_Destroy(lzss);
     BitStream_Close(strm);
@@ -157,7 +157,7 @@ void testNaiveLZSS_EncodeDecodeTest(void *obj)
     lzss = NaiveLZSS_Create(7, 16, 1, 2);
     strm = BitStream_Open("encdectest3.bin", "rb", NULL, 0);
     Test_AssertEqual(
-        NaiveLZSS_DecodeSymbol(lzss, strm, test, NUM_TEST_SYMBOLS),
+        NaiveLZSS_Decode(lzss, strm, test, NUM_TEST_SYMBOLS),
         NAIVE_LZSS_APIRESULT_OK);
 
     is_ok = 1;
@@ -195,7 +195,7 @@ void testNaiveLZSS_EncodeDecodeTest(void *obj)
     lzss = NaiveLZSS_Create(7, 128, 3, 5);
     strm = BitStream_Open("encdectest4.bin", "wb", NULL, 0);
     Test_AssertEqual(
-        NaiveLZSS_EncodeSymbol(lzss, strm, answer, NUM_TEST_SYMBOLS),
+        NaiveLZSS_Encode(lzss, strm, answer, NUM_TEST_SYMBOLS),
         NAIVE_LZSS_APIRESULT_OK);
     NaiveLZSS_Destroy(lzss);
     BitStream_Close(strm);
@@ -204,7 +204,7 @@ void testNaiveLZSS_EncodeDecodeTest(void *obj)
     lzss = NaiveLZSS_Create(7, 128, 3, 5);
     strm = BitStream_Open("encdectest4.bin", "rb", NULL, 0);
     Test_AssertEqual(
-        NaiveLZSS_DecodeSymbol(lzss, strm, test, NUM_TEST_SYMBOLS),
+        NaiveLZSS_Decode(lzss, strm, test, NUM_TEST_SYMBOLS),
         NAIVE_LZSS_APIRESULT_OK);
 
     is_ok = 1;
@@ -240,7 +240,7 @@ void testNaiveLZSS_EncodeDecodeTest(void *obj)
     lzss = NaiveLZSS_Create(9, 512, 3, 18);
     strm = BitStream_Open("encdectest5.bin", "wb", NULL, 0);
     Test_AssertEqual(
-        NaiveLZSS_EncodeSymbol(lzss, strm, answer, NUM_TEST_SYMBOLS),
+        NaiveLZSS_Encode(lzss, strm, answer, NUM_TEST_SYMBOLS),
         NAIVE_LZSS_APIRESULT_OK);
     NaiveLZSS_Destroy(lzss);
     BitStream_Close(strm);
@@ -249,7 +249,7 @@ void testNaiveLZSS_EncodeDecodeTest(void *obj)
     lzss = NaiveLZSS_Create(9, 512, 3, 18);
     strm = BitStream_Open("encdectest5.bin", "rb", NULL, 0);
     Test_AssertEqual(
-        NaiveLZSS_DecodeSymbol(lzss, strm, test, NUM_TEST_SYMBOLS),
+        NaiveLZSS_Decode(lzss, strm, test, NUM_TEST_SYMBOLS),
         NAIVE_LZSS_APIRESULT_OK);
 
     is_ok = 1;
@@ -291,7 +291,7 @@ void testNaiveLZSS_EncodeDecodeTest(void *obj)
     lzss = NaiveLZSS_Create(8, 8192, 3, 18);
     strm = BitStream_Open("encdectest6.bin", "wb", NULL, 0);
     Test_AssertEqual(
-        NaiveLZSS_EncodeSymbol(lzss, strm, answer, fsize),
+        NaiveLZSS_Encode(lzss, strm, answer, fsize),
         NAIVE_LZSS_APIRESULT_OK);
     NaiveLZSS_Destroy(lzss);
     BitStream_Close(strm);
@@ -300,7 +300,7 @@ void testNaiveLZSS_EncodeDecodeTest(void *obj)
     lzss = NaiveLZSS_Create(8, 8192, 3, 18);
     strm = BitStream_Open("encdectest6.bin", "rb", NULL, 0);
     Test_AssertEqual(
-        NaiveLZSS_DecodeSymbol(lzss, strm, test, fsize),
+        NaiveLZSS_Decode(lzss, strm, test, fsize),
         NAIVE_LZSS_APIRESULT_OK);
 
     is_ok = 1;
