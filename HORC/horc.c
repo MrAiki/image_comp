@@ -3,16 +3,14 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define HORC_NUM_SYMBOLS(n_bits)      (1UL << (n_bits))           /* 通常のシンボル数 */
-#define HORC_ESCAPE(n_bits)           ((int32_t)HORC_NUM_SYMBOLS(n_bits))  /* エスケープ文字 */
-
-#define HORC_MAXIMUM_SCALE            ((int32_t)((1UL << 15) - 1))/* 出現度数の最大値 */
-#define HORC_MAX_COUNT                ((1UL << 10) - 1)           /* シンボルの出現度数の上限 */
-#define HORC_DONE                     (-1)                        /* ファイル終端を示す記号 */
-#define HORC_FLUSH_MODEL              (-2)                        /* モデルの吐き出しを表す記号 */
-#define HORC_COMPRESSION_RATIO_THRESHOLD 90                       /* 圧縮率の閾値 */
-
-#define HORC_BOOL_TO_BIT(bool)        ((bool) ? 1 : 0)            /* 条件式をビットに直す */
+#define HORC_MAXIMUM_SCALE                ((int32_t)((1UL << 15) - 1))          /* 出現度数の最大値 */
+#define HORC_MAX_COUNT                    ((1UL << 10) - 1)                     /* シンボルの出現度数の上限 */
+#define HORC_DONE                         (-1)                                  /* ファイル終端を示す記号 */
+#define HORC_FLUSH_MODEL                  (-2)                                  /* モデルの吐き出しを表す記号 */
+#define HORC_COMPRESSION_RATIO_THRESHOLD  90                                    /* 圧縮率の閾値 */
+#define HORC_NUM_SYMBOLS(n_bits)          (1UL << (n_bits))                     /* 通常のシンボル数 */
+#define HORC_ESCAPE(n_bits)               ((int32_t)HORC_NUM_SYMBOLS(n_bits))   /* エスケープ文字 */
+#define HORC_BOOL_TO_BIT(bool_exp)        ((bool_exp) ? 1 : 0)                  /* 条件式をビットに直す */
 
 /* NULLチェックとfree */
 #define NULLCHECK_AND_FREE(obj) { \
@@ -96,9 +94,9 @@ struct HORC {
   int32_t*          totals;             /* 現在の文脈における累積度数表 */
   int32_t*          scoreboard;         /* 高次のモデルで出現した記号 */
   /* レンジコーダ部 */
-  uint16_t          code;               /* 現在の入力符号 */
-  uint16_t          low;                /* 現在の入力区間の下限 */
-  uint16_t          high;               /* 現在の入力区間の上限 */
+  uint32_t          code;               /* 現在の入力符号 */
+  uint32_t          low;                /* 現在の入力区間の下限 */
+  uint32_t          high;               /* 現在の入力区間の上限 */
   uint32_t          underflow_bits;     /* アンダーフロービット数 */
   /* 圧縮率管理部 */
   int32_t           input_mark;         /* 入力の進捗 */
@@ -746,7 +744,7 @@ static void HORC_FlushModel(struct HORC* horc)
 static void HORCRangeCoder_InitializeEncode(struct HORC* horc)
 {
   horc->low             = 0;
-  horc->high            = 0xFFFF;
+  horc->high            = 0xFFFFFFFF;
   horc->underflow_bits  = 0;
 }
 
@@ -756,44 +754,44 @@ static void HORCRangeCoder_FinishEncode(
 {
   /* アンダーフロービット出力 */
   BitStream_PutBit(stream,
-      HORC_BOOL_TO_BIT((horc->low & 0x4000) != 0));
+      HORC_BOOL_TO_BIT((horc->low & 0x40000000) != 0));
   horc->underflow_bits++;
   while (horc->underflow_bits > 0) {
     BitStream_PutBit(stream,
-        HORC_BOOL_TO_BIT((~(horc->low) & 0x4000) != 0));
+        HORC_BOOL_TO_BIT((~(horc->low) & 0x40000000) != 0));
     horc->underflow_bits--;
   }
-  BitStream_PutBits(stream, 16, 0);
+  BitStream_PutBits(stream, 32, 0);
 }
 
 /* シンボルのエンコード */
 static void HORCRangeCoder_EncodeSymbol(struct HORC* horc,
     struct BitStream* stream, struct RangeCoderSymbol* s)
 {
-  uint32_t range;
+  uint64_t range;
 
   /* レンジと上限下限の更新 */
-  range      = (horc->high - horc->low) + 1;
+  range      = (uint64_t)(horc->high - horc->low) + 1;
   horc->high = horc->low + ((range * s->high_count) / s->scale - 1);
   horc->low  = horc->low + ((range * s->low_count) / s->scale);
 
   for (;;) {
-    if ((horc->high & 0x8000) == (horc->low & 0x8000)) {
+    if ((horc->high & 0x80000000) == (horc->low & 0x80000000)) {
       /* 最上位桁が一致したら出力 */
       BitStream_PutBit(stream,
-          HORC_BOOL_TO_BIT((horc->high & 0x8000) != 0));
+          HORC_BOOL_TO_BIT((horc->high & 0x80000000) != 0));
       /* 溜まったアンダーフロー分を出力 */
       while (horc->underflow_bits > 0) {
         BitStream_PutBit(stream, 
-            HORC_BOOL_TO_BIT((~(horc->high) & 0x8000) != 0));
+            HORC_BOOL_TO_BIT((~(horc->high) & 0x80000000) != 0));
         horc->underflow_bits--;
       }
-    } else if ((horc->low & 0x4000) && !(horc->high & 0x4000)) {
+    } else if ((horc->low & 0x40000000) && !(horc->high & 0x40000000)) {
       /* 上から2桁目が不一致ならば接近していると判定
        * アンダーフロー判定 */
       horc->underflow_bits++;
-      horc->low   &= 0x3FFF;
-      horc->high  |= 0x4000;
+      horc->low   &= 0x3FFFFFFF;
+      horc->high  |= 0x40000000;
     } else {
       return;
     }
@@ -808,9 +806,9 @@ static void HORCRangeCoder_EncodeSymbol(struct HORC* horc,
 /* 符号に対する出現度数を得る 返り値を符号のスケールで割ると符号が得られる */
 static int32_t HORCRangeCoder_GetCurrentCount(struct HORC* horc, struct RangeCoderSymbol* s)
 {
-  int32_t range, count;
-  range = horc->high - horc->low + 1;
-  count = ((horc->code - horc->low + 1) * s->scale - 1) / range;
+  int64_t range, count;
+  range = (int64_t)horc->high - horc->low + 1;
+  count = ((int64_t)(horc->code - horc->low + 1) * s->scale - 1) / range;
   return count;
 }
 
@@ -821,37 +819,37 @@ static void HORCRangeCoder_InitializeDecode(
   int32_t i;
 
   horc->code = 0;
-  for (i = 0; i < 16; i++) {
+  for (i = 0; i < 32; i++) {
     horc->code <<= 1;
     horc->code += BitStream_GetBit(stream);
   }
 
   horc->low   = 0;
-  horc->high  = 0xFFFF;
+  horc->high  = 0xFFFFFFFF;
 }
 
 /* シンボルを復号した後のビット読み込み処理 */
 static void HORCRangeCoder_RemoveSymbolFromStream(
     struct HORC* horc, struct BitStream* stream, struct RangeCoderSymbol* s)
 {
-  int32_t range;
+  int64_t range;
 
   assert(s->scale != 0);
 
   /* レンジ, 上限, 下限の更新 */
-  range       = horc->high - horc->low + 1;
+  range       = (int64_t)(horc->high - horc->low) + 1;
   horc->high  = horc->low + (s->high_count * range) / s->scale - 1;
   horc->low   = horc->low + (s->low_count  * range) / s->scale;
 
   /* ビットの読み込み */
   for (;;) {
-    if ((horc->high & 0x8000) == (horc->low & 0x8000)) {
+    if ((horc->high & 0x80000000) == (horc->low & 0x80000000)) {
       /* 最上位ビットが一致したらそのまま取り除く */
-    } else if (((horc->low & 0x4000) == 0x4000) && ((horc->high & 0x4000) == 0)) {
+    } else if (((horc->low & 0x40000000) == 0x40000000) && ((horc->high & 0x40000000) == 0)) {
       /* 上から2桁目が接近していれば、2桁目のビットを取り除く */
-      horc->code  ^= 0x4000;
-      horc->low   &= 0x3FFF;
-      horc->high  |= 0x4000;
+      horc->code  ^= 0x40000000;
+      horc->low   &= 0x3FFFFFFF;
+      horc->high  |= 0x40000000;
     } else {
       /* 取り除くことはできない */
       return;
