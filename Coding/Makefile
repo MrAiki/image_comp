@@ -1,9 +1,8 @@
 CC 		    = gcc
-CFLAGS 	  = -Wall -Wextra -O0 -g
+CFLAGS 	  = -Wall -Wextra -O3
 LDFLAGS		= -lm
-OBJS	 		= coding.o pnm.o bit_stream.o coding_main.o
-OBJS_TENKAICHI = coding.o pnm.o bit_stream.o coding_main_for_tenkaichi.o
-TARGET    = coding coding_main_for_tenkaichi
+OBJS	 		= src_main.o bit_stream.o sgm.o predictive_coding.o coding_utility.o adaptive_huffman.o horc.o src.o
+TARGET    = src
 
 all: $(TARGET) 
 
@@ -14,16 +13,19 @@ rebuild:
 clean:
 	rm -f $(OBJS) $(TEST_OBJS) $(TARGET)
 
-coding : $(OBJS)
+src : $(OBJS)
 	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJS) -o $@
 
-coding_main_for_tenkaichi : $(OBJS_TENKAICHI)
-	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJS_TENKAICHI) -o $@
-
-pnm.o : ../pnm/pnm.c
+bit_stream.o : ../../BitStream/bit_stream.c
 	$(CC) $(CFLAGS) -c $<
 
-bit_stream.o : ../../BitStream/bit_stream.c
+sgm.o : ../SGM/sgm.c
+	$(CC) $(CFLAGS) -c $<
+
+adaptive_huffman.o : ../AdaptiveHuffman/adaptive_huffman.c
+	$(CC) $(CFLAGS) -c $<
+
+horc.o : ../HORC/horc.c
 	$(CC) $(CFLAGS) -c $<
 
 .c.o:
