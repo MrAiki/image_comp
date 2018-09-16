@@ -1,7 +1,7 @@
 #ifndef SRC_H_INCLUDED
 #define SRC_H_INCLUDED
 
-#include "../../BitStream/bit_stream.h"
+#include "../BitStream/bit_stream.h"
 
 /* SRC - Shibuki Ran-length Coding */
 

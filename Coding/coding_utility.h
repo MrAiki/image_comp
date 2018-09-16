@@ -2,7 +2,7 @@
 #define CODING_UTIL_H_INCLUDED
 
 #include <stdint.h>
-#include "../../BitStream/bit_stream.h"
+#include "../BitStream/bit_stream.h"
 
 /* ceil(log2(val)) を計算する */
 uint32_t CodingUtility_Log2ceil(uint32_t val);

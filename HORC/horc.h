@@ -1,7 +1,7 @@
 #ifndef HORC_H_INCLUDED 
 #define HORC_H_INCLUDED 
 
-#include "../../BitStream/bit_stream.h"
+#include "../BitStream/bit_stream.h"
 #include <stdint.h>
 
 /* 高次文脈モデルを使用したレンジコーダ */

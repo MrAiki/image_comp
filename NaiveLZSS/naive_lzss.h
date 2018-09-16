@@ -1,7 +1,7 @@
 #ifndef NAIVE_LZSS_H_INCLUDED 
 #define NAIVE_LZSS_H_INCLUDED 
 
-#include "../../BitStream/bit_stream.h"
+#include "../BitStream/bit_stream.h"
 #include <stdint.h>
 
 /* ハンドル */

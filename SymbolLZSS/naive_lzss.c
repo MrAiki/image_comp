@@ -1,5 +1,4 @@
 #include "naive_lzss.h"
-#include "../../BitStream/bit_stream.h"
 
 #include <stdlib.h>
 #include <string.h>

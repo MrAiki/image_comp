@@ -1,6 +1,6 @@
 #include "../pnm/pnm.h"
 #include "../AdaptiveHuffman/adaptive_huffman.h"
-#include "../../BitStream/bit_stream.h"
+#include "../BitStream/bit_stream.h"
 
 #include <string.h>
 #include <stdio.h>

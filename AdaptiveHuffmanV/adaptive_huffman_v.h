@@ -1,7 +1,7 @@
 #ifndef ADAPTIVE_HUFFMAN_V_H_INCLUDED 
 #define ADAPTIVE_HUFFMAN_V_H_INCLUDED 
 
-#include "../../BitStream/bit_stream.h"
+#include "../BitStream/bit_stream.h"
 #include <stdint.h>
 
 /* 適応型ハフマン（Vアルゴリズムベース）木 */
