@@ -59,7 +59,7 @@ class SRNNPredictor
     float learning(void); 
 
     // 予測結果predict_signalの出力
-    float* predict(float *input); 
+    void predict(float *input, float *predict); 
 };
 
 #endif /* SRNNPREDICTOR_H_INCLUDED */

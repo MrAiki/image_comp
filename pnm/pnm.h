@@ -23,7 +23,7 @@ struct PNMColor {
 /* 1画素 */
 typedef union PNMPixelTag {
   struct PNMColor  c;  /* RGBカラー */
-  uint8_t          g;  /* グレースケール */
+  int32_t          g;  /* グレースケール */
   uint8_t          b;  /* 2値(0 or 1) */
 } PNMPixel;
 

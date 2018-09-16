@@ -10,9 +10,15 @@
 /* 連鎖の探索方向の数 */
 #define NUM_SEARCH_DIRECTIONS 3
 
+/* 符号付き32bit数値を符号なし32bit数値に一意変換 */
+#define SINT32_TO_UINT32(sint) (((sint) <= 0) ? (-((sint) << 1)) : (((sint) << 1) - 1))
+
+/* 符号なし32bit数値を符号付き32bit数値に一意変換 */
+#define UINT32_TO_SINT32(uint) (((uint) & 1) ? (((uint) >> 1) + 1) : (-(((int32_t)(uint)) >> 1)))
+
 /* 連鎖の探索方向 */
 static const int32_t search_direction[NUM_SEARCH_DIRECTIONS] = {
-  0, -1, 1, 
+  0, -1, 1,
 };
 
 /* 範囲外アクセス対応版アクセサ */
@@ -34,8 +40,8 @@ static int32_t PNMPict_GetGRAY(const struct PNMPicture* pic,
   return (int32_t)PNMPict_GRAY(pic, x, y);
 }
 
-/* PICに基づいてエンコード */
-static void PIC_Encode(const struct PNMPicture* pic, struct BitStream* stream)
+/* PICに基づいてエンコード（リファレンス） */
+static void PIC_EncodeNaive(const struct PNMPicture* pic, struct BitStream* stream)
 {
   int32_t x, y;
   int32_t s_x, s_y;
@@ -119,8 +125,8 @@ static void PIC_Encode(const struct PNMPicture* pic, struct BitStream* stream)
 
 }
 
-/* PICに基づいてデコード */
-static void PIC_Decode(struct BitStream* stream, const char* outname)
+/* PICに基づいてデコード（リファレンス） */
+static void PIC_DecodeNaive(struct BitStream* stream, const char* outname)
 {
   uint64_t bitsbuf;
   int32_t x, y, s_x, s_y, next_direction;
@@ -199,6 +205,200 @@ static void PIC_Decode(struct BitStream* stream, const char* outname)
   /* 書き出し */
   PNM_WritePictureToFile(outname, outpic);
 
+  PNM_DestroyPicture(buf_pic);
+  PNM_DestroyPicture(outpic);
+}
+
+static int32_t count = 0;
+
+/* PICに基づいてエンコード */
+static void PIC_Encode(const struct PNMPicture* pic, struct BitStream* stream)
+{
+  int32_t x, y;
+  int32_t s_x, s_y;
+  int32_t prev_pixcel, curr_pixcel;
+  int32_t i_dir, next_direction;
+  const int32_t width   = (int32_t)pic->header.width;
+  const int32_t height  = (int32_t)pic->header.height;
+  struct PNMPicture* buf_pic;  /* 変化点を保存する一時的なバッファ画像 */
+  struct AdaptiveHuffmanTree* dir_tree = AdaptiveHuffmanTree_Create(2);
+  struct AdaptiveHuffmanTree* pixel_tree = AdaptiveHuffmanTree_Create(8);
+  struct AdaptiveHuffmanTree* diff_point_x = AdaptiveHuffmanTree_Create(12);
+  struct AdaptiveHuffmanTree* diff_point_y = AdaptiveHuffmanTree_Create(12);
+
+  /* 先頭に画像サイズを出力 */
+  BitStream_PutBits(stream, 12, width);
+  BitStream_PutBits(stream, 12, height);
+
+  /* バッファを作成 */
+  buf_pic = PNM_CreatePicture(width, height);
+  buf_pic->header.format = PNM_FORMAT_P5;
+  buf_pic->header.max_brightness = 255;
+  for (y = 0; y < height; y++) {
+    for (x = 0; x < width; x++) {
+      PNMPict_GRAY(buf_pic, x, y) = 0;
+    }
+  }
+
+  /* 変化点を求める */
+  prev_pixcel = -1;
+  for (y = 0; y < height; y++) {
+    for (x = 0; x < width; x++) {
+      curr_pixcel = PNMPict_GRAY(pic, x, y);
+      if (prev_pixcel != curr_pixcel) {
+        /* 変化点をマーク */
+        PNMPict_GRAY(buf_pic, x, y) = 255;
+      }
+      prev_pixcel = curr_pixcel;
+    }
+  }
+
+  /* 変化点の連鎖を求める */
+  s_x = s_y = 0;
+  for (y = 0; y < height; y++) {
+    for (x = 0; x < width; x++) {
+      /* 変化点を発見 */
+      if (PNMPict_GRAY(buf_pic, x, y) == 255) {
+        /* 変化点をまず記録 */
+        AdaptiveHuffman_EncodeSymbol(diff_point_x, stream, SINT32_TO_UINT32(x - s_x));
+        AdaptiveHuffman_EncodeSymbol(diff_point_y, stream, SINT32_TO_UINT32(y - s_y));
+        if (count++ < 100) {
+          printf("%d %d \n", SINT32_TO_UINT32(x - s_x), SINT32_TO_UINT32(y - s_y));
+        }
+        s_x = x; s_y = y;
+        /* 連鎖を記録 */
+        while (1) {
+          AdaptiveHuffman_EncodeSymbol(pixel_tree, stream, PNMPict_GRAY(pic, s_x, s_y));
+          /* 画像の下端に達した時は、連鎖終了 */
+          if (s_y >= height-1) {
+            AdaptiveHuffman_EncodeSymbol(dir_tree, stream, 0);
+            break;
+          }
+          /* 他の変化点を探す */
+          next_direction = -1;
+          for (i_dir = 0; i_dir < NUM_SEARCH_DIRECTIONS; i_dir++) {
+            if (PNMPict_GetGRAY(buf_pic, s_x + search_direction[i_dir], s_y + 1) == 255) {
+              next_direction = i_dir;
+              break;
+            }
+          }
+          /* 方向を記録（インデックス+1を保存） */
+          AdaptiveHuffman_EncodeSymbol(dir_tree, stream, next_direction+1);
+          if (next_direction == -1) {
+            /* 連鎖が見つからなかったので、次の連鎖を探索 */
+            break;
+          }
+          /* 次行こうぜ */
+          s_x += search_direction[next_direction];
+          s_y++;
+        }
+      }
+    }
+  }
+
+  /* 終了フラグとして画像サイズの座標を出力 */
+  AdaptiveHuffman_EncodeSymbol(diff_point_x, stream, SINT32_TO_UINT32(width  - s_x));
+  AdaptiveHuffman_EncodeSymbol(diff_point_y, stream, SINT32_TO_UINT32(height - s_y));
+
+  AdaptiveHuffmanTree_Destroy(diff_point_x);
+  AdaptiveHuffmanTree_Destroy(diff_point_y);
+  AdaptiveHuffmanTree_Destroy(pixel_tree);
+  AdaptiveHuffmanTree_Destroy(dir_tree);
+  PNM_DestroyPicture(buf_pic);
+
+}
+
+/* PICに基づいてデコード */
+static void PIC_Decode(struct BitStream* stream, const char* outname)
+{
+  uint64_t bitsbuf;
+  int32_t x, y, s_x, s_y;
+  uint32_t tmp_x, tmp_y;
+  uint32_t next_direction;
+  uint32_t pixel;
+  int32_t buf_pixel;
+  int32_t width, height;
+  struct PNMPicture* buf_pic;  /* 変化点を保存する一時的なバッファ画像 */
+  struct PNMPicture* outpic;   /* 復元画像 */
+  struct AdaptiveHuffmanTree* dir_tree = AdaptiveHuffmanTree_Create(2);
+  struct AdaptiveHuffmanTree* pixel_tree = AdaptiveHuffmanTree_Create(8);
+  struct AdaptiveHuffmanTree* diff_point_x = AdaptiveHuffmanTree_Create(12);
+  struct AdaptiveHuffmanTree* diff_point_y = AdaptiveHuffmanTree_Create(12);
+
+  /* 先頭に画像サイズが埋められている */
+  BitStream_GetBits(stream, 12, &bitsbuf);
+  width   = (int32_t)bitsbuf;
+  BitStream_GetBits(stream, 12, &bitsbuf);
+  height  = (int32_t)bitsbuf;
+
+  /* バッファと出力画像の領域確保 */
+  outpic  = PNM_CreatePicture(width, height);
+  outpic->header.format = PNM_FORMAT_P5;
+  outpic->header.max_brightness = 255;
+  buf_pic = PNM_CreatePicture(width, height);
+
+  /* バッファのクリア */
+  for (y = 0; y < height; y++) {
+    for (x = 0; x < width; x++) {
+      PNMPict_GRAY(buf_pic, x, y) = 0;
+    }
+  }
+
+  /* 変化点を読み込む */
+  s_x = s_y = 0;
+  while (1) {
+    /* 連鎖始点の座標読み取り */
+    AdaptiveHuffman_DecodeSymbol(diff_point_x, stream, &tmp_x);
+    AdaptiveHuffman_DecodeSymbol(diff_point_y, stream, &tmp_y);
+    x = s_x + UINT32_TO_SINT32(tmp_x);
+    y = s_y + UINT32_TO_SINT32(tmp_y);
+
+    /* 終了フラグが見つかった */
+    if (x == width && y == height) {
+      break;
+    }
+
+    /* 連鎖データを読み込む */
+    s_x = x; s_y = y;
+    while (1) {
+      /* 変化点データを読み込み */
+      AdaptiveHuffman_DecodeSymbol(pixel_tree, stream, &pixel);
+      /* 画像に保存,  バッファには変化点としてマーク */
+      PNMPict_GRAY(buf_pic, s_x, s_y) = 255;
+      PNMPict_GRAY(outpic,  s_x, s_y) = pixel;
+      /* 連鎖の方向を読み込み */
+      AdaptiveHuffman_DecodeSymbol(dir_tree, stream, &next_direction);
+      /* 連鎖の終了 */
+      if (next_direction == 0) {
+        break;
+      }
+      /* 次行こうぜ */
+      s_x += search_direction[next_direction-1];
+      s_y++;
+    }
+  }
+
+  /* 変化点から間を塗りつぶす */
+  pixel = 0;
+  for (y = 0; y < height; y++) {
+    for (x = 0; x < width; x++) {
+      buf_pixel = PNMPict_GRAY(buf_pic, x, y);
+      if (buf_pixel > 0) {
+        /* 変化点であれば、その画素値を取得 */
+        pixel = PNMPict_GRAY(outpic, x, y);
+      } else {
+        PNMPict_GRAY(outpic, x, y) = pixel;
+      }
+    }
+  }
+
+  /* 書き出し */
+  PNM_WritePictureToFile(outname, outpic);
+
+  AdaptiveHuffmanTree_Destroy(diff_point_x);
+  AdaptiveHuffmanTree_Destroy(diff_point_y);
+  AdaptiveHuffmanTree_Destroy(dir_tree);
+  AdaptiveHuffmanTree_Destroy(pixel_tree);
   PNM_DestroyPicture(buf_pic);
   PNM_DestroyPicture(outpic);
 }

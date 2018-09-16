@@ -19,7 +19,7 @@ clean:
 $(TARGET) : $(OBJS) $(TEST_OBJS)
 	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJS) $(TEST_OBJS) -o $(TARGET)
 
-bit_stream.o : ../../../BitStream/bit_stream.c
+bit_stream.o : ../../BitStream/bit_stream.c
 	$(CC) $(CFLAGS) -c $<
 
 .c.o:

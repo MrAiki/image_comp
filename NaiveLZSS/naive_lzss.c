@@ -48,7 +48,7 @@ static uint32_t log2ceil(uint32_t val);
 
 /* デバッグ用表示関数 */
 /* デバッグが死ぬほど辛かったので残しておく */
-static void debug_print_window(struct NaiveLZSS* lzss);
+static void debug_print_window(const struct NaiveLZSS* lzss);
 
 /* マルチビットLZSSハンドル */
 struct NaiveLZSS* NaiveLZSS_Create(
@@ -293,7 +293,8 @@ static uint32_t log2ceil(uint32_t val)
   return 32 - nlz5(val - 1);
 }
 
-static void debug_print_window(struct NaiveLZSS* lzss)
+/* デバッグ用表示関数 */
+static void debug_print_window(const struct NaiveLZSS* lzss)
 {
   uint32_t i;
   puts("-----------------------");

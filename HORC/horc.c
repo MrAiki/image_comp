@@ -3,8 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define HORC_MAXIMUM_SCALE                ((int32_t)((1UL << 15) - 1))          /* 出現度数の最大値 */
-#define HORC_MAX_COUNT                    ((1UL << 10) - 1)                     /* シンボルの出現度数の上限 */
+#define HORC_MAXIMUM_SCALE                ((int32_t)((1UL << 18) - 1))          /* 出現度数の最大値 */
+#define HORC_MAX_COUNT                    ((1UL << 13) - 1)                     /* シンボルの出現度数の上限 */
 #define HORC_DONE                         (-1)                                  /* ファイル終端を示す記号 */
 #define HORC_FLUSH_MODEL                  (-2)                                  /* モデルの吐き出しを表す記号 */
 #define HORC_COMPRESSION_RATIO_THRESHOLD  90                                    /* 圧縮率の閾値 */
@@ -19,7 +19,8 @@
   }                               \
 }
 
-// #define MEMORY_DEBUG  1
+/* リークが多発したのでデバッグ用 */
+/* #define MEMORY_DEBUG  1 */
 
 #if defined(MEMORY_DEBUG) 
 
@@ -38,11 +39,11 @@
 }
 
 /* ログ付きrealloc */
-#define HORC_REALLOC(ptr, baseptr, size, type) {  \
-  ptr = (type)realloc(baseptr, size);             \
-  assert(ptr != NULL);                            \
-  printf("%s(%p) <- realloc(%p,%tu); \n",         \
-    #ptr, ptr, baseptr, size);                    \
+#define HORC_REALLOC(ptr, size, type) {       \
+  ptr = (type)realloc(ptr, size);             \
+  assert(ptr != NULL);                        \
+  printf("%s(%p) <- realloc(%p,%tu); \n",     \
+    #ptr, ptr, ptr, size);                    \
 }
 
 #else
@@ -53,8 +54,8 @@
 #define HORC_CALLOC(ptr, size, num, type) \
   ptr = (type)calloc(size, num)
 
-#define HORC_REALLOC(ptr, baseptr, size, type) \
-  ptr = (type)realloc(baseptr, size)
+#define HORC_REALLOC(ptr, size, type) \
+  ptr = (type)realloc(ptr, size)
 
 #endif
 
@@ -389,14 +390,14 @@ static struct Context* HORC_AllocateNextOrderTable(
     if (table->links == NULL) {
       HORC_CALLOC(table->links, new_size, 1, struct ContextLinks *);
     } else {
-      HORC_REALLOC(table->links, table->links, new_size, struct ContextLinks *);
+      HORC_REALLOC(table->links, new_size, struct ContextLinks *);
     }
 
     new_size = sizeof(struct ContextEntry) * (table->max_index + 1);
     if (table->stats == NULL) {
       HORC_CALLOC(table->stats, new_size, 1, struct ContextEntry *);
     } else {
-      HORC_REALLOC(table->stats, table->stats, new_size, struct ContextEntry *);
+      HORC_REALLOC(table->stats, new_size, struct ContextEntry *);
     }
 
     table->stats[i].symbol = symbol;
@@ -460,7 +461,7 @@ static void HORC_UpdateTable(struct HORC* horc, struct Context* table, int32_t s
       if (table->max_index == 0) {
         HORC_CALLOC(table->links, new_size, 1, struct ContextLinks *);
       } else {
-        HORC_REALLOC(table->links, table->links, new_size, struct ContextLinks *);
+        HORC_REALLOC(table->links, new_size, struct ContextLinks *);
       }
       table->links[index].next = NULL;
     }
@@ -469,7 +470,7 @@ static void HORC_UpdateTable(struct HORC* horc, struct Context* table, int32_t s
     if (table->max_index == 0) {
       HORC_CALLOC(table->stats, new_size, 1, struct ContextEntry *);
     } else {
-      HORC_REALLOC(table->stats, table->stats, new_size, struct ContextEntry *);
+      HORC_REALLOC(table->stats, new_size, struct ContextEntry *);
     }
 
     table->stats[index].symbol = symbol;
@@ -656,7 +657,7 @@ static void HORC_RescaleTable(struct Context* table)
       free(table->stats);
       table->stats = NULL;
     } else {
-      HORC_REALLOC(table->stats, table->stats,
+      HORC_REALLOC(table->stats, 
           sizeof(struct ContextEntry) * (table->max_index + 1),
           struct ContextEntry *);
     }
@@ -737,6 +738,7 @@ static void HORC_RecursiveFlush(struct Context* table)
 /* 全ての文脈表を掃き出す */
 static void HORC_FlushModel(struct HORC* horc)
 {
+  /* puts("Flush!"); */
   HORC_RecursiveFlush(horc->contexts[0]);
 }
 
@@ -761,7 +763,9 @@ static void HORCRangeCoder_FinishEncode(
         HORC_BOOL_TO_BIT((~(horc->low) & 0x40000000) != 0));
     horc->underflow_bits--;
   }
-  BitStream_PutBits(stream, 32, 0);
+
+  /* 余り分をフラッシュ */
+  BitStream_Flush(stream);
 }
 
 /* シンボルのエンコード */

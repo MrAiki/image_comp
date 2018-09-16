@@ -19,7 +19,7 @@ $(TARGET) : $(OBJS) $(TEST_OBJS)
 pnm.o : ../pnm/pnm.c
 	$(CC) $(CFLAGS) -c $<
 
-bit_stream.o : ../../BitStream/bit_stream.c
+bit_stream.o : ../BitStream/bit_stream.c
 	$(CC) $(CFLAGS) -c $<
 
 adaptive_huffman.o : ../AdaptiveHuffman/adaptive_huffman.c
@@ -27,3 +27,4 @@ adaptive_huffman.o : ../AdaptiveHuffman/adaptive_huffman.c
 
 .c.o:
 	$(CC) $(CFLAGS) -c $<
+

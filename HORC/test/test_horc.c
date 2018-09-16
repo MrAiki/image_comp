@@ -154,7 +154,7 @@ void testHORC_BlackBoxTest(void *obj)
     uint32_t fsize, i;
     struct stat fstat;
     FILE* fp;
-    const char* filename = "syokuji_ramen_abura.sgm";
+    const char* filename = "syokuji_ramen_abura_structure.pgm";
 
     stat(filename, &fstat);
     fsize = fstat.st_size;

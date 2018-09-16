@@ -16,7 +16,7 @@ clean:
 src : $(OBJS)
 	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJS) -o $@
 
-bit_stream.o : ../../BitStream/bit_stream.c
+bit_stream.o : ../BitStream/bit_stream.c
 	$(CC) $(CFLAGS) -c $<
 
 sgm.o : ../SGM/sgm.c

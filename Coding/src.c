@@ -20,7 +20,7 @@
 /* 偶数は負、奇数は正とする */
 #define SINT32_TO_UINT32(sint) (((sint) <= 0) ? (-((sint) << 1)) : (((sint) << 1) - 1))
 /* 符号なし32bit数値を符号付き32bit数値に一意変換 */
-#define UINT32_TO_SINT32(uint) (((uint) & 1) ? (((uint) >> 1) + 1) : (-(((int32_t)(uint)) >> 1)))
+#define UINT32_TO_SINT32(uint) (((uint) & 1) ? ((int32_t)((uint) >> 1) + 1) : (-(int32_t)((uint) >> 1)))
 
 /* ランのモード */
 typedef enum RunModeTag {
@@ -79,7 +79,6 @@ SRCApiResult SRC_Encode(const char* in_filename, const char* out_filename)
       diff[i_data++] = PredictiveCoding_MyLOCOI(w,n,nw,nn,ww) - SGMPicture_GetGRAY(sgm, x, y);
     }
   }
-  SGMPicture_Destroy(sgm);
 
   /* 符号出力 */
   /* ヘッダ部 */
@@ -98,6 +97,7 @@ SRCApiResult SRC_Encode(const char* in_filename, const char* out_filename)
 
   free(diff);
   free(output_symbol);
+  SGMPicture_Destroy(sgm);
 
   return SRC_APIRESULT_OKOKOK;
 }

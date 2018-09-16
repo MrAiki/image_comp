@@ -852,7 +852,7 @@ CHECK_END_P1P4:
       "./data/for_test_write_p5.pgm",
     };
     const PNMFormat   formats[] = { PNM_FORMAT_P2, PNM_FORMAT_P5 };
-    uint32_t          answer[TESTWIDTH][TESTHEIGHT];
+    int32_t           answer[TESTWIDTH][TESTHEIGHT];
     uint32_t          x, y, i_test;
     int32_t           is_ok;
 
