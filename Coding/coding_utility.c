@@ -1,5 +1,4 @@
 #include "coding_utility.h"
-#include "../../BitStream/bit_stream.h"
 
 #include <assert.h>
 #include <stdio.h>

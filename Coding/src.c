@@ -4,14 +4,14 @@
 #include "../SGM/sgm.h"
 #include "../HORC/horc.h"
 #include "../AdaptiveHuffman/adaptive_huffman.h"
-#include "../../BitStream/bit_stream.h"
+#include "../BitStream/bit_stream.h"
 
 #include <stdlib.h>
 #include <assert.h>
 
 /* 
  * ランウェイは沢山の人の想いを背負って歩く道
- *                               アイカツ37話
+ *                           アイカツ5話,35話
  */
 
 /* 2値のうち最大を取得 */
